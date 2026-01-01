@@ -1,0 +1,933 @@
+local BoxESPLib = {}
+local ESP = {}
+
+-- Configuration
+ESP.Settings = {
+    Keybind = Enum.KeyCode.End,
+    LocalDebug = false,
+    IgnoreTeam = false,
+
+    Box = {
+        Enabled = true,
+        Color = Color3.fromRGB(255, 255, 255),
+        Thickness = 1.5,
+        Transparency = 0, -- Changed from 1 to 0
+        Filled = false,
+        FilledTransparency = 0.25,
+        MaxSize = 300,
+        ColorTeam = true,
+    },
+
+    Outline = {
+        Enabled = true,
+        Color = Color3.fromRGB(0, 0, 0),
+        Thickness = 3,
+        Transparency = 0, -- Changed from 1 to 0
+    },
+
+    Healthbar = {
+        Enabled = true,
+        Width = 3,
+        Background = Color3.fromRGB(40, 40, 40),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+        OutlineTransparency = 0,
+
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 97, 242)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(137, 87, 255)),
+            }),
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
+        },
+    },
+
+    HealthChange = {
+        Enabled = true,
+        Font = Enum.Font.DenkOne,
+        Size = 11,
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+        Duration = 2.3,
+        FadeSpeed = 1,
+        StackOffset = 11,
+        CheckInterval = 0.18,
+    },
+
+    Nametag = {
+        Enabled = true,
+        Font = Enum.Font.SourceSansBold,
+        Size = 13,
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        UseDisplayName = false,
+        Offset = Vector2.new(0, -15),
+        ShowOutline = true,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+    },
+
+    Distance = {
+        Enabled = true,
+        Font = Enum.Font.SourceSansBold,
+        Size = 13,
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        Offset = Vector2.new(0, 0),
+        ShowOutline = true,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+    },
+
+    Velocity = {
+        Enabled = true,
+        Font = Enum.Font.SourceSansBold,
+        Size = 13,
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.fromRGB(0, 0, 0),
+    },
+
+    Highlight = {
+        Enabled = true,
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 1,
+        OutlineColor = Color3.fromRGB(255, 255, 255),
+        OutlineTransparency = 0.92,
+    },
+
+    Character = {
+        MaxPartDistance = 5,
+        R6Parts = {
+            'Head',
+            'Torso',
+            'Left Arm',
+            'Right Arm',
+            'Left Leg',
+            'Right Leg',
+        },
+        R15Parts = {
+            'HumanoidRootPart',
+            'UpperTorso',
+            'LowerTorso',
+            'Head',
+            'LeftUpperArm',
+            'LeftLowerArm',
+            'LeftHand',
+            'RightUpperArm',
+            'RightLowerArm',
+            'RightHand',
+            'LeftUpperLeg',
+            'LeftLowerLeg',
+            'LeftFoot',
+            'RightUpperLeg',
+            'RightLowerLeg',
+            'RightFoot',
+        },
+    },
+}
+
+ESP.Enabled = true
+ESP.Connections = {}
+ESP.GUIs = {}
+ESP.HealthStates = {}
+ESP.HealthChanges = {}
+ESP.LastHealthCheck = {}
+ESP.ScreenGui = nil
+
+-- Public API Functions
+function BoxESPLib:GetSettings()
+    return ESP.Settings
+end
+
+function BoxESPLib:SetSettings(newSettings)
+    for category, settings in pairs(newSettings) do
+        if ESP.Settings[category] then
+            for key, value in pairs(settings) do
+                if ESP.Settings[category][key] ~= nil then
+                    ESP.Settings[category][key] = value
+                end
+            end
+        end
+    end
+end
+
+function BoxESPLib:Toggle()
+    ESP.Enabled = not ESP.Enabled
+    ESP.UpdateAllVisibility()
+end
+
+function BoxESPLib:Enable()
+    ESP.Enabled = true
+    ESP.UpdateAllVisibility()
+end
+
+function BoxESPLib:Disable()
+    ESP.Enabled = false
+    ESP.UpdateAllVisibility()
+end
+
+function BoxESPLib:IsEnabled()
+    return ESP.Enabled
+end
+
+function BoxESPLib:Destroy()
+    -- Disconnect all connections
+    for _, connection in ipairs(ESP.Connections) do
+        connection:Disconnect()
+    end
+    ESP.Connections = {}
+    
+    -- Remove all ESP elements
+    ESP.CleanupAllESP()
+    
+    -- Destroy ScreenGui
+    if ESP.ScreenGui then
+        ESP.ScreenGui:Destroy()
+        ESP.ScreenGui = nil
+    end
+    
+    -- Clear all tables
+    ESP.GUIs = {}
+    ESP.HealthStates = {}
+    ESP.HealthChanges = {}
+    ESP.LastHealthCheck = {}
+end
+
+-- Internal Functions
+ESP.Get3DBounds = function(char)
+    local parts = {}
+    for _, name in ipairs(ESP.Settings.Character.R6Parts) do
+        local p = char:FindFirstChild(name)
+        if p and p:IsA('BasePart') then
+            table.insert(parts, p)
+        end
+    end
+    for _, name in ipairs(ESP.Settings.Character.R15Parts) do
+        local p = char:FindFirstChild(name)
+        if p and p:IsA('BasePart') then
+            table.insert(parts, p)
+        end
+    end
+    if #parts == 0 then
+        return
+    end
+
+    local min, max =
+        Vector3.new(math.huge, math.huge, math.huge),
+        Vector3.new(-math.huge, -math.huge, -math.huge)
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA('BasePart') and not part.Parent:IsA('Accessory') then
+            local include = false
+            for _, mp in ipairs(parts) do
+                if
+                    (part.Position - mp.Position).Magnitude
+                    <= ESP.Settings.Character.MaxPartDistance
+                then
+                    include = true
+                    break
+                end
+            end
+            if not include then
+                continue
+            end
+
+            local size = part.Size / 2
+            local cf = part.CFrame
+            local corners = {
+                cf * Vector3.new(size.X, size.Y, size.Z),
+                cf * Vector3.new(size.X, size.Y, -size.Z),
+                cf * Vector3.new(size.X, -size.Y, size.Z),
+                cf * Vector3.new(size.X, -size.Y, -size.Z),
+                cf * Vector3.new(-size.X, size.Y, size.Z),
+                cf * Vector3.new(-size.X, size.Y, -size.Z),
+                cf * Vector3.new(-size.X, -size.Y, size.Z),
+                cf * Vector3.new(-size.X, -size.Y, -size.Z),
+            }
+            for _, c in ipairs(corners) do
+                min = Vector3.new(
+                    math.min(min.X, c.X),
+                    math.min(min.Y, c.Y),
+                    math.min(min.Z, c.Z)
+                )
+                max = Vector3.new(
+                    math.max(max.X, c.X),
+                    math.max(max.Y, c.Y),
+                    math.max(max.Z, c.Z)
+                )
+            end
+        end
+    end
+    return min, max
+end
+
+ESP.GetBoxCorners = function(char)
+    local min3D, max3D = ESP.Get3DBounds(char)
+    if not min3D or not max3D then
+        return
+    end
+
+    local points = {
+        Vector3.new(min3D.X, max3D.Y, min3D.Z),
+        Vector3.new(min3D.X, max3D.Y, max3D.Z),
+        Vector3.new(max3D.X, max3D.Y, min3D.Z),
+        Vector3.new(max3D.X, max3D.Y, max3D.Z),
+        Vector3.new(min3D.X, min3D.Y, min3D.Z),
+        Vector3.new(min3D.X, min3D.Y, max3D.Z),
+        Vector3.new(max3D.X, min3D.Y, min3D.Z),
+        Vector3.new(max3D.X, min3D.Y, max3D.Z),
+    }
+
+    local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
+    for _, p in ipairs(points) do
+        local screen = workspace.CurrentCamera:WorldToViewportPoint(p)
+        if screen.Z > 0 then
+            minX, maxX = math.min(minX, screen.X), math.max(maxX, screen.X)
+            minY, maxY = math.min(minY, screen.Y), math.max(maxY, screen.Y)
+        end
+    end
+    if minX == math.huge then
+        return
+    end
+
+    local w, h =
+        math.min(maxX - minX, ESP.Settings.Box.MaxSize),
+        math.min(maxY - minY, ESP.Settings.Box.MaxSize)
+    local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
+    local hw, hh = w / 2, h / 2
+
+    return Vector2.new(cx - hw, cy - hh),
+        Vector2.new(cx + hw, cy - hh),
+        Vector2.new(cx + hw, cy + hh),
+        Vector2.new(cx - hw, cy + hh),
+        w,
+        h
+end
+
+ESP.CreateFrameBox = function(parent, props)
+    local frame = Instance.new('Frame')
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    frame.ClipsDescendants = false
+    frame.Parent = parent
+    
+    local uiStroke = Instance.new('UIStroke')
+    uiStroke.Thickness = props.Thickness or 1
+    uiStroke.Color = props.Color or Color3.fromRGB(255, 255, 255)
+    uiStroke.Transparency = props.Transparency or 0
+    uiStroke.LineJoinMode = Enum.LineJoinMode.Miter
+    uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    uiStroke.Parent = frame
+    
+    return frame
+end
+
+ESP.CreateESP = function(player)
+    if ESP.GUIs[player] then
+        return
+    end
+
+    -- Create box frame with UIStroke
+    local boxFrame = ESP.CreateFrameBox(ESP.ScreenGui, {
+        Thickness = ESP.Settings.Box.Thickness,
+        Color = ESP.Settings.Box.Color,
+        Transparency = ESP.Settings.Box.Transparency,
+    })
+
+    -- Create outline frame
+    local outlineFrame = ESP.CreateFrameBox(ESP.ScreenGui, {
+        Thickness = ESP.Settings.Outline.Thickness,
+        Color = ESP.Settings.Outline.Color,
+        Transparency = ESP.Settings.Outline.Transparency,
+    })
+
+    -- Create fill frame
+    local fillFrame = Instance.new('Frame', ESP.ScreenGui)
+    fillFrame.BackgroundColor3 = ESP.Settings.Box.Color
+    fillFrame.BackgroundTransparency = ESP.Settings.Box.FilledTransparency
+    fillFrame.BorderSizePixel = 0
+    fillFrame.Visible = ESP.Settings.Box.Filled
+
+    -- Create healthbar components
+    local healthbarOutline = Instance.new('Frame', ESP.ScreenGui)
+    healthbarOutline.BackgroundColor3 = ESP.Settings.Healthbar.OutlineColor
+    healthbarOutline.BackgroundTransparency = ESP.Settings.Healthbar.OutlineTransparency
+    healthbarOutline.BorderSizePixel = 0
+
+    local barBG = Instance.new('Frame', healthbarOutline)
+    barBG.BackgroundColor3 = ESP.Settings.Healthbar.Background
+    barBG.BackgroundTransparency = ESP.Settings.Healthbar.BackgroundTransparency
+    barBG.BorderSizePixel = 0
+    barBG.Position = UDim2.fromOffset(1, 1)
+
+    local barFill = Instance.new('Frame', barBG)
+    barFill.BorderSizePixel = 0
+    local gradient = Instance.new('UIGradient', barFill)
+    gradient.Color = ESP.Settings.Healthbar.Gradient.Colors
+    gradient.Rotation = 90
+
+    -- Health change tags
+    local healthChangeTags = {}
+    for i = 1, 3 do
+        local healthChangeTag = Instance.new('TextLabel', ESP.ScreenGui)
+        healthChangeTag.Font = ESP.Settings.HealthChange.Font
+        healthChangeTag.TextSize = ESP.Settings.HealthChange.Size
+        healthChangeTag.TextColor3 = ESP.Settings.HealthChange.Color
+        healthChangeTag.TextTransparency = 1
+        healthChangeTag.TextStrokeTransparency = 1
+        healthChangeTag.TextStrokeColor3 = ESP.Settings.HealthChange.OutlineColor
+        healthChangeTag.TextXAlignment = Enum.TextXAlignment.Right
+        healthChangeTag.BackgroundTransparency = 1
+        healthChangeTag.Visible = false
+        table.insert(healthChangeTags, healthChangeTag)
+    end
+
+    local nameTag = Instance.new('TextLabel', ESP.ScreenGui)
+    nameTag.Font = ESP.Settings.Nametag.Font
+    nameTag.TextSize = ESP.Settings.Nametag.Size
+    nameTag.TextColor3 = ESP.Settings.Nametag.Color
+    nameTag.TextTransparency = ESP.Settings.Nametag.Transparency
+    nameTag.TextStrokeTransparency = ESP.Settings.Nametag.ShowOutline and 0 or 1
+    nameTag.TextStrokeColor3 = ESP.Settings.Nametag.OutlineColor
+    nameTag.TextXAlignment = Enum.TextXAlignment.Center
+    nameTag.BackgroundTransparency = 1
+
+    local distanceTag = Instance.new('TextLabel', ESP.ScreenGui)
+    distanceTag.Font = ESP.Settings.Distance.Font
+    distanceTag.TextSize = ESP.Settings.Distance.Size
+    distanceTag.TextColor3 = ESP.Settings.Distance.Color
+    distanceTag.TextTransparency = ESP.Settings.Distance.Transparency
+    distanceTag.TextStrokeTransparency = ESP.Settings.Distance.ShowOutline and 0 or 1
+    distanceTag.TextStrokeColor3 = ESP.Settings.Distance.OutlineColor
+    distanceTag.TextXAlignment = Enum.TextXAlignment.Center
+    distanceTag.BackgroundTransparency = 1
+
+    local velocityTag = Instance.new('TextLabel', ESP.ScreenGui)
+    velocityTag.Font = ESP.Settings.Velocity.Font
+    velocityTag.TextSize = ESP.Settings.Velocity.Size
+    velocityTag.TextColor3 = ESP.Settings.Velocity.Color
+    velocityTag.TextTransparency = ESP.Settings.Velocity.Transparency
+    velocityTag.TextStrokeTransparency = ESP.Settings.Velocity.ShowOutline and 0 or 1
+    velocityTag.TextStrokeColor3 = ESP.Settings.Velocity.OutlineColor
+    velocityTag.TextXAlignment = Enum.TextXAlignment.Left
+    velocityTag.BackgroundTransparency = 1
+
+    local highlight = Instance.new('Highlight')
+    highlight.FillColor = ESP.Settings.Highlight.Color
+    highlight.FillTransparency = ESP.Settings.Highlight.Transparency
+    highlight.OutlineColor = ESP.Settings.Highlight.OutlineColor
+    highlight.OutlineTransparency = ESP.Settings.Highlight.OutlineTransparency
+    highlight.Parent = ESP.ScreenGui
+
+    ESP.GUIs[player] = {
+        boxFrame = boxFrame,
+        outlineFrame = outlineFrame,
+        fillFrame = fillFrame,
+        healthbarOutline = healthbarOutline,
+        barBG = barBG,
+        barFill = barFill,
+        healthChangeTags = healthChangeTags,
+        nameTag = nameTag,
+        distanceTag = distanceTag,
+        velocityTag = velocityTag,
+        highlight = highlight,
+    }
+    ESP.HealthStates[player] = 1
+    ESP.HealthChanges[player] = {}
+    ESP.LastHealthCheck[player] = {
+        health = 1,
+        time = tick(),
+    }
+end
+
+ESP.RemoveESP = function(player)
+    if ESP.GUIs[player] then
+        for _, v in pairs(ESP.GUIs[player]) do
+            if type(v) == 'table' then
+                for _, obj in ipairs(v) do
+                    pcall(obj.Destroy, obj)
+                end
+            else
+                pcall(v.Destroy, v)
+            end
+        end
+        ESP.GUIs[player] = nil
+    end
+    ESP.HealthStates[player] = nil
+    ESP.HealthChanges[player] = nil
+    ESP.LastHealthCheck[player] = nil
+end
+
+ESP.CleanupAllESP = function()
+    for player, _ in pairs(ESP.GUIs) do
+        ESP.RemoveESP(player)
+    end
+    ESP.GUIs = {}
+    ESP.HealthStates = {}
+    ESP.HealthChanges = {}
+    ESP.LastHealthCheck = {}
+end
+
+ESP.UpdateAllVisibility = function()
+    for player, guis in pairs(ESP.GUIs) do
+        local shouldShow = ESP.ShouldShowESP(player) and ESP.Enabled
+        
+        guis.boxFrame.Visible = shouldShow and ESP.Settings.Box.Enabled
+        guis.outlineFrame.Visible = shouldShow and ESP.Settings.Outline.Enabled
+        guis.fillFrame.Visible = shouldShow and ESP.Settings.Box.Filled
+        guis.healthbarOutline.Visible = shouldShow and ESP.Settings.Healthbar.Enabled
+        for _, tag in ipairs(guis.healthChangeTags) do
+            tag.Visible = shouldShow and ESP.Settings.HealthChange.Enabled
+        end
+        guis.nameTag.Visible = shouldShow and ESP.Settings.Nametag.Enabled
+        guis.distanceTag.Visible = shouldShow and ESP.Settings.Distance.Enabled
+        guis.velocityTag.Visible = shouldShow and ESP.Settings.Velocity.Enabled
+        guis.highlight.Enabled = shouldShow and ESP.Settings.Highlight.Enabled
+    end
+end
+
+ESP.UpdateBoxFrames = function(player, tl, tr, br, bl, width, height)
+    local guis = ESP.GUIs[player]
+    if not guis then return end
+
+    local boxFrame = guis.boxFrame
+    local outlineFrame = guis.outlineFrame
+    local fillFrame = guis.fillFrame
+    
+    -- Update positions and sizes
+    boxFrame.Position = UDim2.fromOffset(tl.X, tl.Y)
+    boxFrame.Size = UDim2.fromOffset(width, height)
+    
+    outlineFrame.Position = UDim2.fromOffset(tl.X, tl.Y)
+    outlineFrame.Size = UDim2.fromOffset(width, height)
+    
+    fillFrame.Position = UDim2.fromOffset(tl.X, tl.Y)
+    fillFrame.Size = UDim2.fromOffset(width, height)
+    
+    -- Update colors based on team settings
+    local boxColor = ESP.Settings.Box.ColorTeam
+            and player.Team
+            and player.TeamColor.Color
+        or ESP.Settings.Box.Color
+    
+    -- Update UIStroke colors and transparency
+    boxFrame.UIStroke.Color = boxColor
+    boxFrame.UIStroke.Transparency = ESP.Settings.Box.Transparency
+    fillFrame.BackgroundColor3 = boxColor
+    
+    -- Update outline
+    if ESP.Settings.Outline.Enabled then
+        outlineFrame.Visible = true
+        outlineFrame.UIStroke.Color = ESP.Settings.Outline.Color
+        outlineFrame.UIStroke.Thickness = ESP.Settings.Outline.Thickness
+        outlineFrame.UIStroke.Transparency = ESP.Settings.Outline.Transparency
+        
+        -- Make outline frame slightly larger to create outline effect
+        local outlineOffset = ESP.Settings.Outline.Thickness
+        outlineFrame.Position = UDim2.fromOffset(tl.X - outlineOffset/2, tl.Y - outlineOffset/2)
+        outlineFrame.Size = UDim2.fromOffset(width + outlineOffset, height + outlineOffset)
+        
+        boxFrame.ZIndex = 2
+        outlineFrame.ZIndex = 1
+    else
+        outlineFrame.Visible = false
+    end
+    
+    -- Update fill
+    fillFrame.Visible = ESP.Settings.Box.Filled
+    fillFrame.BackgroundTransparency = ESP.Settings.Box.FilledTransparency
+end
+
+ESP.UpdateNameTag = function(player, nameTag)
+    if not nameTag then
+        return
+    end
+    nameTag.Text = ESP.Settings.Nametag.UseDisplayName and player.DisplayName or player.Name
+end
+
+ESP.UpdateHealthbar = function(player, barFill, height, healthPerc)
+    if not ESP.HealthStates[player] then
+        ESP.HealthStates[player] = healthPerc
+    end
+
+    local targetHeight = height * healthPerc
+
+    if ESP.Settings.Healthbar.Gradient.LerpAnimation then
+        ESP.HealthStates[player] = ESP.HealthStates[player]
+            + (healthPerc - ESP.HealthStates[player]) * ESP.Settings.Healthbar.Gradient.LerpSpeed
+        targetHeight = height * ESP.HealthStates[player]
+    else
+        ESP.HealthStates[player] = healthPerc
+    end
+
+    barFill.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width, targetHeight)
+    barFill.Position = UDim2.fromOffset(0, height - targetHeight)
+
+    local currentTime = tick()
+    local lastCheck = ESP.LastHealthCheck[player]
+
+    if lastCheck and (currentTime - lastCheck.time) >= ESP.Settings.HealthChange.CheckInterval then
+        local healthChange = math.floor((healthPerc - lastCheck.health) * 100)
+
+        if math.abs(healthChange) >= 1 then
+            ESP.ShowHealthChange(player, healthChange)
+        end
+
+        ESP.LastHealthCheck[player] = {
+            health = healthPerc,
+            time = currentTime,
+        }
+    end
+end
+
+ESP.ShowHealthChange = function(player, change)
+    if not ESP.HealthChanges[player] then
+        ESP.HealthChanges[player] = {}
+    end
+
+    table.insert(ESP.HealthChanges[player], 1, {
+        text = change > 0 and '+' .. change or tostring(change),
+        startTime = tick(),
+        transparency = 0,
+        color = change > 0 and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0),
+    })
+
+    if #ESP.HealthChanges[player] > 3 then
+        table.remove(ESP.HealthChanges[player], 4)
+    end
+end
+
+ESP.UpdateHealthChange = function(player, healthChangeTags, healthbarX, healthbarY, healthbarHeight)
+    if not ESP.HealthChanges[player] then
+        return
+    end
+
+    local currentTime = tick()
+    local activeChanges = {}
+
+    for i = #ESP.HealthChanges[player], 1, -1 do
+        local healthChange = ESP.HealthChanges[player][i]
+        local elapsed = currentTime - healthChange.startTime
+
+        if elapsed > ESP.Settings.HealthChange.Duration then
+            table.remove(ESP.HealthChanges[player], i)
+        else
+            local progress = elapsed / ESP.Settings.HealthChange.Duration
+            healthChange.transparency = progress * ESP.Settings.HealthChange.FadeSpeed
+            table.insert(activeChanges, 1, healthChange)
+        end
+    end
+
+    for i, tag in ipairs(healthChangeTags) do
+        if i <= #activeChanges then
+            local healthChange = activeChanges[i]
+            local verticalOffset = (i - 1) * ESP.Settings.HealthChange.StackOffset
+
+            tag.Text = healthChange.text
+            tag.TextColor3 = healthChange.color
+            tag.TextTransparency = healthChange.transparency
+            tag.TextStrokeTransparency = ESP.Settings.HealthChange.ShowOutline and healthChange.transparency or 1
+            tag.Visible = true
+
+            tag.Position = UDim2.fromOffset(healthbarX - 48, healthbarY - 6 + verticalOffset)
+            tag.Size = UDim2.fromOffset(45, 20)
+        else
+            tag.Visible = false
+        end
+    end
+end
+
+ESP.IsSameTeam = function(player)
+    if not ESP.Settings.IgnoreTeam then
+        return false
+    end
+    local localPlayer = game:GetService('Players').LocalPlayer
+    return player.Team and localPlayer.Team and player.Team == localPlayer.Team
+end
+
+ESP.ShouldShowESP = function(player)
+    if player == game:GetService('Players').LocalPlayer then
+        return ESP.Settings.LocalDebug
+    end
+    return not ESP.IsSameTeam(player)
+end
+
+ESP.HandlePlayerAdded = function(player)
+    ESP.RemoveESP(player)
+
+    if not ESP.ShouldShowESP(player) then
+        return
+    end
+
+    ESP.CreateESP(player)
+    local guis = ESP.GUIs[player]
+    if guis then
+        ESP.UpdateNameTag(player, guis.nameTag)
+    end
+
+    local function characterAdded(character)
+        if not ESP.Enabled then
+            return
+        end
+        local hum = character:FindFirstChildOfClass('Humanoid')
+        if hum then
+            ESP.LastHealthCheck[player] = {
+                health = hum.Health / hum.MaxHealth,
+                time = tick(),
+            }
+        end
+    end
+
+    local function characterRemoving()
+        local guis = ESP.GUIs[player]
+        if guis then
+            guis.boxFrame.Visible = false
+            guis.outlineFrame.Visible = false
+            guis.fillFrame.Visible = false
+            guis.healthbarOutline.Visible = false
+            for _, tag in ipairs(guis.healthChangeTags) do
+                tag.Visible = false
+            end
+            guis.nameTag.Visible = false
+            guis.distanceTag.Visible = false
+            guis.velocityTag.Visible = false
+            guis.highlight.Enabled = false
+        end
+    end
+
+    local function teamChanged()
+        if ESP.ShouldShowESP(player) then
+            if not ESP.GUIs[player] then
+                ESP.CreateESP(player)
+                local guis = ESP.GUIs[player]
+                if guis then
+                    ESP.UpdateNameTag(player, guis.nameTag)
+                end
+            end
+        else
+            ESP.RemoveESP(player)
+        end
+    end
+
+    if player.Character then
+        characterAdded(player.Character)
+    end
+
+    table.insert(ESP.Connections, player.CharacterAdded:Connect(characterAdded))
+    table.insert(ESP.Connections, player.CharacterRemoving:Connect(characterRemoving))
+    table.insert(ESP.Connections, player:GetPropertyChangedSignal('Team'):Connect(teamChanged))
+end
+
+ESP.HandlePlayerRemoving = function(player)
+    ESP.RemoveESP(player)
+end
+
+ESP.Initialize = function()
+    -- Clean up any existing ScreenGui
+    if game.CoreGui:FindFirstChild('BoxESPScreenGui') then
+        game.CoreGui:FindFirstChild('BoxESPScreenGui'):Destroy()
+    end
+
+    -- Create ScreenGui
+    ESP.ScreenGui = Instance.new('ScreenGui')
+    ESP.ScreenGui.Name = 'BoxESPScreenGui'
+    ESP.ScreenGui.IgnoreGuiInset = true
+    ESP.ScreenGui.ResetOnSpawn = false
+    ESP.ScreenGui.Parent = game.CoreGui
+
+    -- Clean up any existing ESP
+    ESP.CleanupAllESP()
+
+    local players = game:GetService('Players')
+    local localPlayer = players.LocalPlayer
+
+    -- Handle team changes for all players
+    table.insert(ESP.Connections, localPlayer:GetPropertyChangedSignal('Team'):Connect(function()
+        for _, player in pairs(players:GetPlayers()) do
+            if player ~= localPlayer then
+                ESP.HandlePlayerAdded(player)
+            end
+        end
+    end))
+
+    -- Initialize existing players
+    for _, player in pairs(players:GetPlayers()) do
+        ESP.HandlePlayerAdded(player)
+    end
+
+    if ESP.Settings.LocalDebug then
+        ESP.HandlePlayerAdded(localPlayer)
+    end
+
+    -- Handle new players
+    table.insert(ESP.Connections, players.PlayerAdded:Connect(function(player)
+        ESP.HandlePlayerAdded(player)
+    end))
+
+    -- Handle leaving players
+    table.insert(ESP.Connections, players.PlayerRemoving:Connect(function(player)
+        ESP.HandlePlayerRemoving(player)
+    end))
+
+    -- Keybind for toggling ESP
+    table.insert(ESP.Connections, game:GetService('UserInputService').InputBegan:Connect(function(input)
+        if input.KeyCode == ESP.Settings.Keybind then
+            BoxESPLib:Toggle()
+        end
+    end))
+
+    -- Main render loop
+    table.insert(ESP.Connections, game:GetService('RunService').RenderStepped:Connect(function()
+        if not ESP.Enabled then
+            for player, guis in pairs(ESP.GUIs) do
+                guis.boxFrame.Visible = false
+                guis.outlineFrame.Visible = false
+                guis.fillFrame.Visible = false
+                guis.healthbarOutline.Visible = false
+                for _, tag in ipairs(guis.healthChangeTags) do
+                    tag.Visible = false
+                end
+                guis.nameTag.Visible = false
+                guis.distanceTag.Visible = false
+                guis.velocityTag.Visible = false
+                guis.highlight.Enabled = false
+            end
+            return
+        end
+
+        for player, guis in pairs(ESP.GUIs) do
+            if not ESP.ShouldShowESP(player) then
+                guis.boxFrame.Visible = false
+                guis.outlineFrame.Visible = false
+                guis.fillFrame.Visible = false
+                guis.healthbarOutline.Visible = false
+                for _, tag in ipairs(guis.healthChangeTags) do
+                    tag.Visible = false
+                end
+                guis.nameTag.Visible = false
+                guis.distanceTag.Visible = false
+                guis.velocityTag.Visible = false
+                guis.highlight.Enabled = false
+                continue
+            end
+
+            if not player.Character then
+                guis.boxFrame.Visible = false
+                guis.outlineFrame.Visible = false
+                guis.fillFrame.Visible = false
+                guis.healthbarOutline.Visible = false
+                for _, tag in ipairs(guis.healthChangeTags) do
+                    tag.Visible = false
+                end
+                guis.nameTag.Visible = false
+                guis.distanceTag.Visible = false
+                guis.velocityTag.Visible = false
+                guis.highlight.Enabled = false
+                continue
+            end
+
+            local hrp = player.Character:FindFirstChild('HumanoidRootPart')
+            if not hrp then
+                guis.boxFrame.Visible = false
+                guis.outlineFrame.Visible = false
+                guis.fillFrame.Visible = false
+                guis.healthbarOutline.Visible = false
+                for _, tag in ipairs(guis.healthChangeTags) do
+                    tag.Visible = false
+                end
+                guis.nameTag.Visible = false
+                guis.distanceTag.Visible = false
+                guis.velocityTag.Visible = false
+                guis.highlight.Enabled = false
+                continue
+            end
+
+            local screenPos = workspace.CurrentCamera:WorldToViewportPoint(hrp.Position)
+            if screenPos.Z <= 0 then
+                guis.boxFrame.Visible = false
+                guis.outlineFrame.Visible = false
+                guis.fillFrame.Visible = false
+                guis.healthbarOutline.Visible = false
+                for _, tag in ipairs(guis.healthChangeTags) do
+                    tag.Visible = false
+                end
+                guis.nameTag.Visible = false
+                guis.distanceTag.Visible = false
+                guis.velocityTag.Visible = false
+                guis.highlight.Enabled = false
+                continue
+            end
+
+            local tl, tr, br, bl, width, height = ESP.GetBoxCorners(player.Character)
+            if tl then
+                ESP.UpdateBoxFrames(player, tl, tr, br, bl, width, height)
+                
+                guis.boxFrame.Visible = ESP.Settings.Box.Enabled
+                guis.outlineFrame.Visible = ESP.Settings.Outline.Enabled
+                guis.fillFrame.Visible = ESP.Settings.Box.Filled
+
+                local hum = player.Character:FindFirstChildOfClass('Humanoid')
+                local healthPerc = hum and math.clamp(hum.Health / hum.MaxHealth, 0, 1) or 0
+
+                guis.healthbarOutline.Visible = ESP.Settings.Healthbar.Enabled
+                local healthbarX = tl.X - ESP.Settings.Healthbar.Width - 3 - 1
+                guis.healthbarOutline.Position = UDim2.fromOffset(healthbarX, tl.Y - 1)
+                guis.healthbarOutline.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width + 2, height + 2)
+
+                guis.barBG.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width, height)
+
+                ESP.UpdateHealthbar(player, guis.barFill, height, healthPerc)
+
+                if ESP.Settings.HealthChange.Enabled then
+                    ESP.UpdateHealthChange(player, guis.healthChangeTags, healthbarX, tl.Y, height)
+                end
+
+                guis.nameTag.Visible = ESP.Settings.Nametag.Enabled
+                ESP.UpdateNameTag(player, guis.nameTag)
+                guis.nameTag.Position = UDim2.fromOffset((tl.X + tr.X) / 2 - 30, tl.Y + ESP.Settings.Nametag.Offset.Y)
+                guis.nameTag.Size = UDim2.fromOffset(60, 14)
+
+                guis.distanceTag.Visible = ESP.Settings.Distance.Enabled
+                local distance = math.floor((game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.Position - hrp.Position).Magnitude)
+                guis.distanceTag.Text = '[' .. distance .. 'm]'
+                guis.distanceTag.Position = UDim2.fromOffset((bl.X + br.X) / 2 - 30, bl.Y + ESP.Settings.Distance.Offset.Y)
+                guis.distanceTag.Size = UDim2.fromOffset(60, 14)
+
+                guis.velocityTag.Visible = ESP.Settings.Velocity.Enabled
+                if ESP.Settings.Velocity.Enabled then
+                    local velocity = math.floor(hrp.Velocity.Magnitude)
+                    guis.velocityTag.Text = 'V:' .. velocity
+                    guis.velocityTag.Position = UDim2.fromOffset(tr.X + 5, tr.Y - 3)
+                    guis.velocityTag.Size = UDim2.fromOffset(35, 14)
+                end
+
+                guis.highlight.Enabled = ESP.Settings.Highlight.Enabled
+                guis.highlight.Adornee = player.Character
+                guis.highlight.FillColor = ESP.Settings.Highlight.Color
+                guis.highlight.FillTransparency = ESP.Settings.Highlight.Transparency
+                guis.highlight.OutlineColor = ESP.Settings.Highlight.OutlineColor
+                guis.highlight.OutlineTransparency = ESP.Settings.Highlight.OutlineTransparency
+            else
+                guis.boxFrame.Visible = false
+                guis.outlineFrame.Visible = false
+                guis.fillFrame.Visible = false
+                guis.healthbarOutline.Visible = false
+                for _, tag in ipairs(guis.healthChangeTags) do
+                    tag.Visible = false
+                end
+                guis.nameTag.Visible = false
+                guis.distanceTag.Visible = false
+                guis.velocityTag.Visible = false
+                guis.highlight.Enabled = false
+            end
+        end
+    end))
+end
+
+-- Initialize the ESP
+ESP.Initialize()
+
+return BoxESPLib
