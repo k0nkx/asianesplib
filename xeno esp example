@@ -1,0 +1,52 @@
+-- Example usage with your UI library
+local lib = loadstring(readfile("ui lib.lua"))()
+local BoxESP = loadstring(readfile("BoxESPLib.lua"))() -- Load the ESP library
+
+local Window = lib:MainWindow("ESP System")
+local ESPTab = Window:Tab("ESP Settings")
+
+-- Create ESP UI controls (returns controls for external access if needed)
+local ESPControls = BoxESP:CreateUI(ESPTab)
+
+-- You can also access ESP functions directly:
+local ConfigTab = Window:Tab("Configuration")
+
+ConfigTab:Button("Toggle ESP", function()
+    BoxESP:Toggle()
+end)
+
+ConfigTab:Button("Get ESP Status", function()
+    lib:Notify({
+        Title = "ESP Status",
+        Description = "ESP is " .. (BoxESP:GetEnabled() and "enabled" or "disabled"),
+        Duration = 2,
+        Color = BoxESP:GetEnabled() and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    })
+end)
+
+-- Change keybind programmatically
+ConfigTab:Button("Set Keybind to F1", function()
+    BoxESP:SetKeybind(Enum.KeyCode.F1)
+    lib:Notify({
+        Title = "Keybind Changed",
+        Description = "ESP keybind set to F1",
+        Duration = 2,
+        Color = Color3.fromRGB(50, 150, 250)
+    })
+end)
+
+-- Get all settings
+ConfigTab:Button("Show ESP Settings", function()
+    local settings = BoxESP:GetAllSettings()
+    print("ESP Settings:")
+    for category, catSettings in pairs(settings) do
+        print(category .. ":")
+        if type(catSettings) == "table" then
+            for setting, value in pairs(catSettings) do
+                print("  " .. setting .. " = " .. tostring(value))
+            end
+        else
+            print("  " .. tostring(catSettings))
+        end
+    end
+end)
