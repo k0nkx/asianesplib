@@ -1,0 +1,54 @@
+-- Load your UI library
+local lib = loadstring(readfile("ui lib.lua"))()
+lib.UiSize = 1
+
+-- Create main window
+local Window = lib:MainWindow("ESP Library Demo")
+
+-- Load and integrate ESP library
+local BoxESP = loadstring(readfile("BoxESP.lua"))()
+
+-- Create tabs
+local MainTab = Window:Tab("Main")
+local ESPTab = BoxESP.CreateUI(lib, Window) -- Creates ESP settings tab
+local ConfigTab = Window:Tab("Configuration")
+
+-- Add ESP to config tab as well
+BoxESP.CreateUI(lib, Window, ConfigTab)
+
+-- Example usage in Main tab
+MainTab:Button("Toggle ESP", function()
+    BoxESP.Toggle()
+    lib:Notify({
+        Title = "ESP",
+        Description = "ESP " .. (BoxESP.IsEnabled() and "enabled" or "disabled"),
+        Duration = 2,
+        Color = BoxESP.IsEnabled() and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    })
+end)
+
+MainTab:Button("Test Notification", function()
+    lib:Notify({
+        Title = "ESP Library",
+        Description = "BoxESP Library loaded successfully!",
+        Duration = 3,
+        Color = Color3.fromRGB(50, 150, 250)
+    })
+end)
+
+-- Configuration tab settings
+ConfigTab:Keybind("GUI Toggle Keybind", "V", true, true, true, function()
+    lib.Closed = not lib.Closed
+    for _, v in pairs(lib.XK5NG:GetChildren()) do
+        if v.Name == "mainframe" then v.Visible = lib.Closed end
+    end
+    lib:Notify({
+        Title = "GUI",
+        Description = lib.Closed and "GUI opened" or "GUI closed",
+        Duration = 1,
+        Color = lib.Closed and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    })
+end)
+
+-- Save the ESP library to a file
+writefile("BoxESP.lua", BoxESPLibraryString) -- Replace with actual library string
