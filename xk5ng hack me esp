@@ -41,27 +41,26 @@ local ESP = {
         SimpleBoxMode = true,
 
         Box = {
-            Enabled = true,
+            Enabled = false,
             Color = Color3.fromRGB(255, 255, 255),
             Thickness = 1.5,
             Transparency = 0,
             Filled = false,
             FilledTransparency = 0.75,
             MaxSize = 300,
-            MinSize = 0, -- Added minimum size
             ColorTeam = true,
             Scale = 1.5,
         },
 
         Outline = {
-            Enabled = true,
+            Enabled = false,
             Color = Color3.fromRGB(0, 0, 0),
             Thickness = 1,
             Transparency = 0,
         },
 
         Healthbar = {
-            Enabled = true,
+            Enabled = false,
             Width = 3,
             Background = Color3.fromRGB(40, 40, 40),
             BackgroundTransparency = 0,
@@ -79,7 +78,7 @@ local ESP = {
         },
 
         HealthChange = {
-            Enabled = true,
+            Enabled = false,
             Font = Enum.Font.DenkOne,
             Size = 11,
             Color = Color3.fromRGB(255, 255, 255),
@@ -92,7 +91,7 @@ local ESP = {
         },
 
         Nametag = {
-            Enabled = true,
+            Enabled = false,
             Font = Enum.Font.SourceSansBold,
             Size = 13,
             Color = Color3.fromRGB(255, 255, 255),
@@ -104,7 +103,7 @@ local ESP = {
         },
 
         Distance = {
-            Enabled = true,
+            Enabled = false,
             Font = Enum.Font.SourceSansBold,
             Size = 13,
             Color = Color3.fromRGB(255, 255, 255),
@@ -115,7 +114,7 @@ local ESP = {
         },
 
         Velocity = {
-            Enabled = true,
+            Enabled = false,
             Font = Enum.Font.SourceSansBold,
             Size = 13,
             Color = Color3.fromRGB(255, 255, 255),
@@ -125,7 +124,7 @@ local ESP = {
         },
 
         Highlight = {
-            Enabled = true,
+            Enabled = false,
             Color = Color3.fromRGB(255, 255, 255),
             Transparency = 0.5,
             OutlineColor = Color3.fromRGB(255, 255, 255),
@@ -245,26 +244,20 @@ local function GetSimpleBoxSize(char)
     local height = rawHeight * ESP.Settings.Box.Scale
     local width = (height / 2) * ESP.Settings.Box.Scale
     
-    -- Apply minimum size constraints
-    height = math.max(height, ESP.Settings.Box.MinSize)
-    width = math.max(width, ESP.Settings.Box.MinSize / 2)
-    
-    -- Apply maximum size constraints
-    height = math.min(height, ESP.Settings.Box.MaxSize)
-    width = math.min(width, ESP.Settings.Box.MaxSize)
-    
-    local centerX = headPos.X
-    local x = centerX - width / 2
+    local x = headPos.X - width / 2
     local y = headPos.Y - (height - rawHeight) / 2
     
-    return x, y, width, height
+    local w, h = math.min(width, ESP.Settings.Box.MaxSize), math.min(height, ESP.Settings.Box.MaxSize)
+    
+    local centerX = headPos.X
+    x = centerX - w / 2
+    
+    return x, y, w, h
 end
 
 local function GetBoxCorners(char)
-    local tl, tr, br, bl, width, height
-    
     if ESP.Settings.SimpleBoxMode then
-        local x, y, w, h = GetSimpleBoxSize(char)
+        local x, y, width, height = GetSimpleBoxSize(char)
         if not x then
             local min3D, max3D = Get3DBounds(char)
             if not min3D or not max3D then
@@ -294,35 +287,35 @@ local function GetBoxCorners(char)
                 return
             end
             
-            w = maxX - minX
-            h = maxY - minY
-            
-            -- Apply size constraints for 3D bounds method too
-            w = math.max(w, ESP.Settings.Box.MinSize)
-            h = math.max(h, ESP.Settings.Box.MinSize)
+            -- FIXED: Ensure width and height are positive by using absolute values
+            local w = math.abs(maxX - minX)
+            local h = math.abs(maxY - minY)
             w = math.min(w, ESP.Settings.Box.MaxSize)
             h = math.min(h, ESP.Settings.Box.MaxSize)
             
-            local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
+            -- FIXED: Ensure coordinates are properly ordered
+            local left = math.min(minX, maxX)
+            local right = math.max(minX, maxX)
+            local top = math.min(minY, maxY)
+            local bottom = math.max(minY, maxY)
+            
+            local cx, cy = (left + right) / 2, (top + bottom) / 2
             local hw, hh = w / 2, h / 2
             
-            tl = Vector2.new(cx - hw, cy - hh)
-            tr = Vector2.new(cx + hw, cy - hh)
-            br = Vector2.new(cx + hw, cy + hh)
-            bl = Vector2.new(cx - hw, cy + hh)
-        else
-            -- Apply size constraints
-            w = math.max(w, ESP.Settings.Box.MinSize)
-            h = math.max(h, ESP.Settings.Box.MinSize)
-            w = math.min(w, ESP.Settings.Box.MaxSize)
-            h = math.min(h, ESP.Settings.Box.MaxSize)
-            
-            tl = Vector2.new(x, y)
-            tr = Vector2.new(x + w, y)
-            br = Vector2.new(x + w, y + h)
-            bl = Vector2.new(x, y + h)
+            return Vector2.new(cx - hw, cy - hh),
+                   Vector2.new(cx + hw, cy - hh),
+                   Vector2.new(cx + hw, cy + hh),
+                   Vector2.new(cx - hw, cy + hh),
+                   w,
+                   h
         end
-        width, height = w, h
+        
+        return Vector2.new(x, y),
+               Vector2.new(x + width, y),
+               Vector2.new(x + width, y + height),
+               Vector2.new(x, y + height),
+               width,
+               height
     else
         local min3D, max3D = Get3DBounds(char)
         if not min3D or not max3D then
@@ -352,30 +345,28 @@ local function GetBoxCorners(char)
             return
         end
 
-        local w, h = maxX - minX, maxY - minY
-        
-        -- Apply size constraints
-        w = math.max(w, ESP.Settings.Box.MinSize)
-        h = math.max(h, ESP.Settings.Box.MinSize)
+        -- FIXED: Ensure width and height are positive by using absolute values
+        local w = math.abs(maxX - minX)
+        local h = math.abs(maxY - minY)
         w = math.min(w, ESP.Settings.Box.MaxSize)
         h = math.min(h, ESP.Settings.Box.MaxSize)
         
-        local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
+        -- FIXED: Ensure coordinates are properly ordered
+        local left = math.min(minX, maxX)
+        local right = math.max(minX, maxX)
+        local top = math.min(minY, maxY)
+        local bottom = math.max(minY, maxY)
+        
+        local cx, cy = (left + right) / 2, (top + bottom) / 2
         local hw, hh = w / 2, h / 2
 
-        tl = Vector2.new(cx - hw, cy - hh)
-        tr = Vector2.new(cx + hw, cy - hh)
-        br = Vector2.new(cx + hw, cy + hh)
-        bl = Vector2.new(cx - hw, cy + hh)
-        width, height = w, h
+        return Vector2.new(cx - hw, cy - hh),
+               Vector2.new(cx + hw, cy - hh),
+               Vector2.new(cx + hw, cy + hh),
+               Vector2.new(cx - hw, cy + hh),
+               w,
+               h
     end
-    
-    -- Additional safety check to prevent extremely small or invalid boxes
-    if width < 1 or height < 1 or math.abs(width) > 10000 or math.abs(height) > 10000 then
-        return
-    end
-    
-    return tl, tr, br, bl, width, height
 end
 
 local function CreateESP(player)
@@ -905,23 +896,23 @@ local function InitializeESP()
             end
 
             local tl, tr, br, bl, width, height = GetBoxCorners(player.Character)
-            if tl and width > 0 and height > 0 and width < 10000 and height < 10000 then
+            if tl then
                 local boxColor = ESP.Settings.Box.ColorTeam and player.Team and player.TeamColor.Color or ESP.Settings.Box.Color
                 
-                -- Ensure position and size are valid
-                local posX, posY = math.max(0, tl.X), math.max(0, tl.Y)
-                local sizeX, sizeY = math.max(1, width), math.max(1, height)
+                -- FIXED: Ensure the box dimensions are positive
+                local boxWidth = math.abs(tr.X - tl.X)
+                local boxHeight = math.abs(bl.Y - tl.Y)
                 
-                guis.boxFrame.Position = UDim2.fromOffset(posX, posY)
-                guis.boxFrame.Size = UDim2.fromOffset(sizeX, sizeY)
+                guis.boxFrame.Position = UDim2.fromOffset(tl.X, tl.Y)
+                guis.boxFrame.Size = UDim2.fromOffset(boxWidth, boxHeight)
                 guis.boxStroke.Color = boxColor
                 guis.boxStroke.Thickness = ESP.Settings.Box.Thickness
                 guis.boxStroke.Transparency = ESP.Settings.Box.Transparency
                 guis.boxFrame.Visible = ESP.Settings.Box.Enabled
                 
                 local outlineOffset = ESP.Settings.Outline.Thickness
-                guis.outlineFrame.Position = UDim2.fromOffset(posX - outlineOffset, posY - outlineOffset)
-                guis.outlineFrame.Size = UDim2.fromOffset(sizeX + (outlineOffset * 2), sizeY + (outlineOffset * 2))
+                guis.outlineFrame.Position = UDim2.fromOffset(tl.X - outlineOffset, tl.Y - outlineOffset)
+                guis.outlineFrame.Size = UDim2.fromOffset(boxWidth + (outlineOffset * 2), boxHeight + (outlineOffset * 2))
                 guis.outlineStroke.Color = ESP.Settings.Outline.Color
                 guis.outlineStroke.Thickness = ESP.Settings.Outline.Thickness
                 guis.outlineStroke.Transparency = ESP.Settings.Outline.Transparency
@@ -932,17 +923,17 @@ local function InitializeESP()
                 local hum = player.Character:FindFirstChildOfClass('Humanoid')
                 local healthPerc = hum and math.clamp(hum.Health / hum.MaxHealth, 0, 1) or 0
 
-                local healthbarX = posX - ESP.Settings.Healthbar.Width - 4
+                local healthbarX = tl.X - ESP.Settings.Healthbar.Width - 4
                 guis.healthbarOutline.Visible = ESP.Settings.Healthbar.Enabled
-                guis.healthbarOutline.Position = UDim2.fromOffset(healthbarX, posY - 1)
-                guis.healthbarOutline.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width + 2, sizeY + 2)
+                guis.healthbarOutline.Position = UDim2.fromOffset(healthbarX, tl.Y - 1)
+                guis.healthbarOutline.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width + 2, boxHeight + 2)
 
-                guis.barBG.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width, sizeY)
+                guis.barBG.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width, boxHeight)
 
-                UpdateHealthbar(player, guis.barFill, sizeY, healthPerc)
+                UpdateHealthbar(player, guis.barFill, boxHeight, healthPerc)
 
                 if ESP.Settings.HealthChange.Enabled then
-                    UpdateHealthChange(player, guis.healthChangeTags, healthbarX, posY, sizeY)
+                    UpdateHealthChange(player, guis.healthChangeTags, healthbarX, tl.Y, boxHeight)
                 end
 
                 guis.nameTag.Visible = ESP.Settings.Nametag.Enabled
@@ -1078,9 +1069,9 @@ function BoxESPLib:CreateUI(Tab)
         self:SetSetting("Box", "Color", color)
     end)
     
-    local boxTeamColor = Tab:Toggle("Team Color", ESP.Settings.Box.ColorTeam, function(state)
+    --[[local boxTeamColor = Tab:Toggle("Team Color", ESP.Settings.Box.ColorTeam, function(state)
         self:SetSetting("Box", "ColorTeam", state)
-    end)
+    end)]]
     Tab:Spliter()
     local boxFill = Tab:Toggle("Box Fill", ESP.Settings.Box.Filled, function(state)
         self:SetSetting("Box", "Filled", state)
@@ -1142,7 +1133,7 @@ function BoxESPLib:CreateUI(Tab)
         self:SetSetting("Highlight", "Enabled", state)
     end)
     
-    local ignoreTeam = Tab:Toggle("Ignore Team", ESP.Settings.IgnoreTeam, function(state)
+    --[[local ignoreTeam = Tab:Toggle("Ignore Team", ESP.Settings.IgnoreTeam, function(state)
         self:SetSetting("IgnoreTeam", state)
     end)
     
@@ -1188,7 +1179,6 @@ function BoxESPLib:CreateUI(Tab)
                 Filled = false,
                 FilledTransparency = 0.75,
                 MaxSize = 300,
-                MinSize = 15,
                 ColorTeam = true,
                 Scale = 1.5,
             },
@@ -1207,15 +1197,6 @@ function BoxESPLib:CreateUI(Tab)
                 BackgroundTransparency = 0,
                 OutlineColor = Color3.fromRGB(0, 0, 0),
                 OutlineTransparency = 0,
-
-                Gradient = {
-                    Colors = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 97, 242)),
-                        ColorSequenceKeypoint.new(1, Color3.fromRGB(137, 87, 255)),
-                    }),
-                    LerpAnimation = true,
-                    LerpSpeed = 0.028,
-                },
             },
 
             HealthChange = {
@@ -1287,6 +1268,7 @@ function BoxESPLib:CreateUI(Tab)
         boxEnabled:SetValue(true)
         boxColor:SetColor(Color3.fromRGB(255, 255, 255))
         boxTeamColor:SetValue(true)
+        boxThickness:SetValue(15)
         boxFill:SetValue(false)
         outlineEnabled:SetValue(true)
         outlineColor:SetColor(Color3.fromRGB(0, 0, 0))
@@ -1299,7 +1281,7 @@ function BoxESPLib:CreateUI(Tab)
         highlightEnabled:SetValue(true)
         ignoreTeam:SetValue(false)
         keybindText:SetText("Current Keybind: End")
-    end)
+    end)]]
     
     return {
         Toggles = {
