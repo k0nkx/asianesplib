@@ -32,6 +32,8 @@ local ESP = {
     HealthStates = {},
     HealthChanges = {},
     PlayerHealthConnections = {},
+    PlayerKOConnections = {},
+    PlayerKOFrozenBoxes = {}, -- Store frozen box dimensions for KO'd players
     Enabled = false,
     
     Settings = {
@@ -255,7 +257,13 @@ local function GetSimpleBoxSize(char)
     return x, y, w, h
 end
 
-local function GetBoxCorners(char)
+local function GetBoxCorners(char, player)
+    -- Check if player has frozen box dimensions from K.O.
+    if ESP.PlayerKOFrozenBoxes[player] then
+        local frozen = ESP.PlayerKOFrozenBoxes[player]
+        return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
+    end
+
     if ESP.Settings.SimpleBoxMode then
         local x, y, width, height = GetSimpleBoxSize(char)
         if not x then
@@ -275,43 +283,36 @@ local function GetBoxCorners(char)
                 Vector3.new(max3D.X, min3D.Y, max3D.Z),
             }
             
-            local screenPoints = {}
+            local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
             for _, p in ipairs(points) do
                 local screen = Camera:WorldToViewportPoint(p)
                 if screen.Z > 0 then
-                    table.insert(screenPoints, Vector2.new(screen.X, screen.Y))
+                    minX, maxX = math.min(minX, screen.X), math.max(maxX, screen.X)
+                    minY, maxY = math.min(minY, screen.Y), math.max(maxY, screen.Y)
                 end
             end
-            
-            if #screenPoints == 0 then
+            if minX == math.huge then
                 return
             end
             
-            -- Find min and max coordinates
-            local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
-            for _, p in ipairs(screenPoints) do
-                minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
-                minY, maxY = math.min(minY, p.Y), math.max(maxY, p.Y)
-            end
-            
             local w, h = math.min(maxX - minX, ESP.Settings.Box.MaxSize), math.min(maxY - minY, ESP.Settings.Box.MaxSize)
+            local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
+            local hw, hh = w / 2, h / 2
             
-            -- Ensure corners are in correct order (clockwise from top-left)
-            local tl = Vector2.new(minX, minY)
-            local tr = Vector2.new(minX + w, minY)
-            local br = Vector2.new(minX + w, minY + h)
-            local bl = Vector2.new(minX, minY + h)
-            
-            return tl, tr, br, bl, w, h
+            return Vector2.new(cx - hw, cy - hh),
+                   Vector2.new(cx + hw, cy - hh),
+                   Vector2.new(cx + hw, cy + hh),
+                   Vector2.new(cx - hw, cy + hh),
+                   w,
+                   h
         end
         
-        -- For simple box mode, we can directly create the corners
-        local tl = Vector2.new(x, y)
-        local tr = Vector2.new(x + width, y)
-        local br = Vector2.new(x + width, y + height)
-        local bl = Vector2.new(x, y + height)
-        
-        return tl, tr, br, bl, width, height
+        return Vector2.new(x, y),
+               Vector2.new(x + width, y),
+               Vector2.new(x + width, y + height),
+               Vector2.new(x, y + height),
+               width,
+               height
     else
         local min3D, max3D = Get3DBounds(char)
         if not min3D or not max3D then
@@ -329,34 +330,28 @@ local function GetBoxCorners(char)
             Vector3.new(max3D.X, min3D.Y, max3D.Z),
         }
 
-        local screenPoints = {}
+        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
         for _, p in ipairs(points) do
             local screen = Camera:WorldToViewportPoint(p)
             if screen.Z > 0 then
-                table.insert(screenPoints, Vector2.new(screen.X, screen.Y))
+                minX, maxX = math.min(minX, screen.X), math.max(maxX, screen.X)
+                minY, maxY = math.min(minY, screen.Y), math.max(maxY, screen.Y)
             end
         end
-        
-        if #screenPoints == 0 then
+        if minX == math.huge then
             return
         end
 
-        -- Find min and max coordinates
-        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
-        for _, p in ipairs(screenPoints) do
-            minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
-            minY, maxY = math.min(minY, p.Y), math.max(maxY, p.Y)
-        end
-
         local w, h = math.min(maxX - minX, ESP.Settings.Box.MaxSize), math.min(maxY - minY, ESP.Settings.Box.MaxSize)
-        
-        -- Ensure corners are in correct order (clockwise from top-left)
-        local tl = Vector2.new(minX, minY)
-        local tr = Vector2.new(minX + w, minY)
-        local br = Vector2.new(minX + w, minY + h)
-        local bl = Vector2.new(minX, minY + h)
+        local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
+        local hw, hh = w / 2, h / 2
 
-        return tl, tr, br, bl, w, h
+        return Vector2.new(cx - hw, cy - hh),
+               Vector2.new(cx + hw, cy - hh),
+               Vector2.new(cx + hw, cy + hh),
+               Vector2.new(cx - hw, cy + hh),
+               w,
+               h
     end
 end
 
@@ -503,6 +498,11 @@ local function RemoveESP(player)
         ESP.PlayerHealthConnections[player] = nil
     end
 
+    if ESP.PlayerKOConnections[player] then
+        pcall(function() ESP.PlayerKOConnections[player]:Disconnect() end)
+        ESP.PlayerKOConnections[player] = nil
+    end
+
     if ESP.GUIs[player] then
         for _, gui in pairs(ESP.GUIs[player]) do
             if type(gui) == 'table' then
@@ -517,6 +517,7 @@ local function RemoveESP(player)
     end
     ESP.HealthStates[player] = nil
     ESP.HealthChanges[player] = nil
+    ESP.PlayerKOFrozenBoxes[player] = nil
 end
 
 local function CleanupAllESP()
@@ -529,6 +530,8 @@ local function CleanupAllESP()
     ESP.HealthStates = {}
     ESP.HealthChanges = {}
     ESP.PlayerHealthConnections = {}
+    ESP.PlayerKOConnections = {}
+    ESP.PlayerKOFrozenBoxes = {}
 end
 
 local function IsSameTeam(player)
@@ -623,6 +626,51 @@ local function SetupHealthChangeTracking(player, humanoid)
     }
 end
 
+local function SetupKOTracking(player, character)
+    if ESP.PlayerKOConnections[player] then
+        pcall(function() ESP.PlayerKOConnections[player]:Disconnect() end)
+    end
+    
+    ESP.PlayerKOConnections[player] = nil
+    
+    local bodyEffects = character:FindFirstChild("BodyEffects")
+    if not bodyEffects then
+        return
+    end
+    
+    local koValue = bodyEffects:FindFirstChild("K.O")
+    if not koValue then
+        return
+    end
+    
+    local function onKOChanged()
+        if koValue.Value == true then
+            -- Player is K.O.'d, freeze current box size
+            if character:FindFirstChild("HumanoidRootPart") then
+                local tl, tr, br, bl, width, height = GetBoxCorners(character, player)
+                if tl and tr and br and bl then
+                    ESP.PlayerKOFrozenBoxes[player] = {
+                        tl = tl,
+                        tr = tr,
+                        br = br,
+                        bl = bl,
+                        width = width,
+                        height = height
+                    }
+                end
+            end
+        else
+            -- Player is no longer K.O.'d, unfreeze box size
+            ESP.PlayerKOFrozenBoxes[player] = nil
+        end
+    end
+    
+    ESP.PlayerKOConnections[player] = koValue:GetPropertyChangedSignal("Value"):Connect(onKOChanged)
+    
+    -- Initial check
+    onKOChanged()
+end
+
 local function UpdateHealthChange(player, healthChangeTags, healthbarX, healthbarY, healthbarHeight)
     if not ESP.HealthChanges[player] then
         return
@@ -703,6 +751,9 @@ local function HandlePlayerAdded(player)
             SetupHealthChangeTracking(player, humanoid)
             ESP.HealthStates[player] = humanoid.Health / humanoid.MaxHealth
         end
+        
+        -- Setup K.O. tracking
+        SetupKOTracking(player, character)
     end
 
     local function characterRemoving()
@@ -715,6 +766,13 @@ local function HandlePlayerAdded(player)
             end
             ESP.PlayerHealthConnections[player] = nil
         end
+        
+        if ESP.PlayerKOConnections[player] then
+            pcall(function() ESP.PlayerKOConnections[player]:Disconnect() end)
+            ESP.PlayerKOConnections[player] = nil
+        end
+        
+        ESP.PlayerKOFrozenBoxes[player] = nil
         
         local guis = ESP.GUIs[player]
         if guis then
@@ -886,7 +944,7 @@ local function InitializeESP()
                 continue
             end
 
-            local tl, tr, br, bl, width, height = GetBoxCorners(player.Character)
+            local tl, tr, br, bl, width, height = GetBoxCorners(player.Character, player)
             if tl then
                 local boxColor = ESP.Settings.Box.ColorTeam and player.Team and player.TeamColor.Color or ESP.Settings.Box.Color
                 
