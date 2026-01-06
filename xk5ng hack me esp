@@ -275,47 +275,43 @@ local function GetBoxCorners(char)
                 Vector3.new(max3D.X, min3D.Y, max3D.Z),
             }
             
-            local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
+            local screenPoints = {}
             for _, p in ipairs(points) do
                 local screen = Camera:WorldToViewportPoint(p)
                 if screen.Z > 0 then
-                    minX, maxX = math.min(minX, screen.X), math.max(maxX, screen.X)
-                    minY, maxY = math.min(minY, screen.Y), math.max(maxY, screen.Y)
+                    table.insert(screenPoints, Vector2.new(screen.X, screen.Y))
                 end
             end
-            if minX == math.huge then
+            
+            if #screenPoints == 0 then
                 return
             end
             
-            -- FIXED: Ensure width and height are positive by using absolute values
-            local w = math.abs(maxX - minX)
-            local h = math.abs(maxY - minY)
-            w = math.min(w, ESP.Settings.Box.MaxSize)
-            h = math.min(h, ESP.Settings.Box.MaxSize)
+            -- Find min and max coordinates
+            local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
+            for _, p in ipairs(screenPoints) do
+                minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+                minY, maxY = math.min(minY, p.Y), math.max(maxY, p.Y)
+            end
             
-            -- FIXED: Ensure coordinates are properly ordered
-            local left = math.min(minX, maxX)
-            local right = math.max(minX, maxX)
-            local top = math.min(minY, maxY)
-            local bottom = math.max(minY, maxY)
+            local w, h = math.min(maxX - minX, ESP.Settings.Box.MaxSize), math.min(maxY - minY, ESP.Settings.Box.MaxSize)
             
-            local cx, cy = (left + right) / 2, (top + bottom) / 2
-            local hw, hh = w / 2, h / 2
+            -- Ensure corners are in correct order (clockwise from top-left)
+            local tl = Vector2.new(minX, minY)
+            local tr = Vector2.new(minX + w, minY)
+            local br = Vector2.new(minX + w, minY + h)
+            local bl = Vector2.new(minX, minY + h)
             
-            return Vector2.new(cx - hw, cy - hh),
-                   Vector2.new(cx + hw, cy - hh),
-                   Vector2.new(cx + hw, cy + hh),
-                   Vector2.new(cx - hw, cy + hh),
-                   w,
-                   h
+            return tl, tr, br, bl, w, h
         end
         
-        return Vector2.new(x, y),
-               Vector2.new(x + width, y),
-               Vector2.new(x + width, y + height),
-               Vector2.new(x, y + height),
-               width,
-               height
+        -- For simple box mode, we can directly create the corners
+        local tl = Vector2.new(x, y)
+        local tr = Vector2.new(x + width, y)
+        local br = Vector2.new(x + width, y + height)
+        local bl = Vector2.new(x, y + height)
+        
+        return tl, tr, br, bl, width, height
     else
         local min3D, max3D = Get3DBounds(char)
         if not min3D or not max3D then
@@ -333,39 +329,34 @@ local function GetBoxCorners(char)
             Vector3.new(max3D.X, min3D.Y, max3D.Z),
         }
 
-        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
+        local screenPoints = {}
         for _, p in ipairs(points) do
             local screen = Camera:WorldToViewportPoint(p)
             if screen.Z > 0 then
-                minX, maxX = math.min(minX, screen.X), math.max(maxX, screen.X)
-                minY, maxY = math.min(minY, screen.Y), math.max(maxY, screen.Y)
+                table.insert(screenPoints, Vector2.new(screen.X, screen.Y))
             end
         end
-        if minX == math.huge then
+        
+        if #screenPoints == 0 then
             return
         end
 
-        -- FIXED: Ensure width and height are positive by using absolute values
-        local w = math.abs(maxX - minX)
-        local h = math.abs(maxY - minY)
-        w = math.min(w, ESP.Settings.Box.MaxSize)
-        h = math.min(h, ESP.Settings.Box.MaxSize)
-        
-        -- FIXED: Ensure coordinates are properly ordered
-        local left = math.min(minX, maxX)
-        local right = math.max(minX, maxX)
-        local top = math.min(minY, maxY)
-        local bottom = math.max(minY, maxY)
-        
-        local cx, cy = (left + right) / 2, (top + bottom) / 2
-        local hw, hh = w / 2, h / 2
+        -- Find min and max coordinates
+        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
+        for _, p in ipairs(screenPoints) do
+            minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+            minY, maxY = math.min(minY, p.Y), math.max(maxY, p.Y)
+        end
 
-        return Vector2.new(cx - hw, cy - hh),
-               Vector2.new(cx + hw, cy - hh),
-               Vector2.new(cx + hw, cy + hh),
-               Vector2.new(cx - hw, cy + hh),
-               w,
-               h
+        local w, h = math.min(maxX - minX, ESP.Settings.Box.MaxSize), math.min(maxY - minY, ESP.Settings.Box.MaxSize)
+        
+        -- Ensure corners are in correct order (clockwise from top-left)
+        local tl = Vector2.new(minX, minY)
+        local tr = Vector2.new(minX + w, minY)
+        local br = Vector2.new(minX + w, minY + h)
+        local bl = Vector2.new(minX, minY + h)
+
+        return tl, tr, br, bl, w, h
     end
 end
 
@@ -899,12 +890,8 @@ local function InitializeESP()
             if tl then
                 local boxColor = ESP.Settings.Box.ColorTeam and player.Team and player.TeamColor.Color or ESP.Settings.Box.Color
                 
-                -- FIXED: Ensure the box dimensions are positive
-                local boxWidth = math.abs(tr.X - tl.X)
-                local boxHeight = math.abs(bl.Y - tl.Y)
-                
                 guis.boxFrame.Position = UDim2.fromOffset(tl.X, tl.Y)
-                guis.boxFrame.Size = UDim2.fromOffset(boxWidth, boxHeight)
+                guis.boxFrame.Size = UDim2.fromOffset(width, height)
                 guis.boxStroke.Color = boxColor
                 guis.boxStroke.Thickness = ESP.Settings.Box.Thickness
                 guis.boxStroke.Transparency = ESP.Settings.Box.Transparency
@@ -912,7 +899,7 @@ local function InitializeESP()
                 
                 local outlineOffset = ESP.Settings.Outline.Thickness
                 guis.outlineFrame.Position = UDim2.fromOffset(tl.X - outlineOffset, tl.Y - outlineOffset)
-                guis.outlineFrame.Size = UDim2.fromOffset(boxWidth + (outlineOffset * 2), boxHeight + (outlineOffset * 2))
+                guis.outlineFrame.Size = UDim2.fromOffset(width + (outlineOffset * 2), height + (outlineOffset * 2))
                 guis.outlineStroke.Color = ESP.Settings.Outline.Color
                 guis.outlineStroke.Thickness = ESP.Settings.Outline.Thickness
                 guis.outlineStroke.Transparency = ESP.Settings.Outline.Transparency
@@ -926,14 +913,14 @@ local function InitializeESP()
                 local healthbarX = tl.X - ESP.Settings.Healthbar.Width - 4
                 guis.healthbarOutline.Visible = ESP.Settings.Healthbar.Enabled
                 guis.healthbarOutline.Position = UDim2.fromOffset(healthbarX, tl.Y - 1)
-                guis.healthbarOutline.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width + 2, boxHeight + 2)
+                guis.healthbarOutline.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width + 2, height + 2)
 
-                guis.barBG.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width, boxHeight)
+                guis.barBG.Size = UDim2.fromOffset(ESP.Settings.Healthbar.Width, height)
 
-                UpdateHealthbar(player, guis.barFill, boxHeight, healthPerc)
+                UpdateHealthbar(player, guis.barFill, height, healthPerc)
 
                 if ESP.Settings.HealthChange.Enabled then
-                    UpdateHealthChange(player, guis.healthChangeTags, healthbarX, tl.Y, boxHeight)
+                    UpdateHealthChange(player, guis.healthChangeTags, healthbarX, tl.Y, height)
                 end
 
                 guis.nameTag.Visible = ESP.Settings.Nametag.Enabled
