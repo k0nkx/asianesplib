@@ -171,6 +171,9 @@ local Players = game:GetService('Players')
 local UserInputService = game:GetService('UserInputService')
 local Camera = workspace.CurrentCamera
 
+-- Minimum box size constant
+local MIN_BOX_SIZE = 10  -- Minimum width and height in pixels
+
 local function Get3DBounds(char)
     local parts = {}
     for _, name in ipairs(ESP.Settings.Character.R6Parts) do
@@ -244,6 +247,10 @@ local function GetSimpleBoxSize(char)
     local height = rawHeight * ESP.Settings.Box.Scale
     local width = (height / 2) * ESP.Settings.Box.Scale
     
+    -- Apply minimum size constraint
+    width = math.max(width, MIN_BOX_SIZE)
+    height = math.max(height, MIN_BOX_SIZE)
+    
     local x = headPos.X - width / 2
     local y = headPos.Y - (height - rawHeight) / 2
     
@@ -287,7 +294,14 @@ local function GetBoxCorners(char)
                 return
             end
             
-            local w, h = math.min(maxX - minX, ESP.Settings.Box.MaxSize), math.min(maxY - minY, ESP.Settings.Box.MaxSize)
+            local w = maxX - minX
+            local h = maxY - minY
+            
+            -- Apply minimum size constraint
+            w = math.max(w, MIN_BOX_SIZE)
+            h = math.max(h, MIN_BOX_SIZE)
+            
+            w, h = math.min(w, ESP.Settings.Box.MaxSize), math.min(h, ESP.Settings.Box.MaxSize)
             local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
             local hw, hh = w / 2, h / 2
             
@@ -334,7 +348,14 @@ local function GetBoxCorners(char)
             return
         end
 
-        local w, h = math.min(maxX - minX, ESP.Settings.Box.MaxSize), math.min(maxY - minY, ESP.Settings.Box.MaxSize)
+        local w = maxX - minX
+        local h = maxY - minY
+        
+        -- Apply minimum size constraint
+        w = math.max(w, MIN_BOX_SIZE)
+        h = math.max(h, MIN_BOX_SIZE)
+        
+        w, h = math.min(w, ESP.Settings.Box.MaxSize), math.min(h, ESP.Settings.Box.MaxSize)
         local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
         local hw, hh = w / 2, h / 2
 
