@@ -48,7 +48,7 @@ local ESP = {
             Filled = false,
             FilledTransparency = 0.75,
             MaxSize = 300,
-            MinSize = 5, -- Added minimum size
+            MinSize = 1, -- Added minimum size
             ColorTeam = true,
             Scale = 1.5,
         },
