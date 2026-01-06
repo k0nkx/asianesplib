@@ -34,6 +34,7 @@ local ESP = {
     PlayerHealthConnections = {},
     PlayerKOConnections = {},
     PlayerKOFrozenBoxes = {}, -- Store frozen box dimensions for KO'd players
+    PlayerLastValidBoxes = {}, -- Store last valid box dimensions for all players
     Enabled = false,
     
     Settings = {
@@ -258,17 +259,25 @@ local function GetSimpleBoxSize(char)
 end
 
 local function GetBoxCorners(char, player)
-    -- Check if player has frozen box dimensions from K.O.
-    if ESP.PlayerKOFrozenBoxes[player] then
-        local frozen = ESP.PlayerKOFrozenBoxes[player]
-        return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
-    end
-
+    -- Store last valid box for reference
+    local tl, tr, br, bl, width, height
+    
     if ESP.Settings.SimpleBoxMode then
-        local x, y, width, height = GetSimpleBoxSize(char)
-        if not x then
+        local x, y, w, h = GetSimpleBoxSize(char)
+        if x then
+            tl = Vector2.new(x, y)
+            tr = Vector2.new(x + w, y)
+            br = Vector2.new(x + w, y + h)
+            bl = Vector2.new(x, y + h)
+            width, height = w, h
+        else
             local min3D, max3D = Get3DBounds(char)
             if not min3D or not max3D then
+                -- If no valid box can be calculated, check for frozen box
+                if ESP.PlayerKOFrozenBoxes[player] then
+                    local frozen = ESP.PlayerKOFrozenBoxes[player]
+                    return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
+                end
                 return
             end
             
@@ -292,6 +301,11 @@ local function GetBoxCorners(char, player)
                 end
             end
             if minX == math.huge then
+                -- If no valid box can be calculated, check for frozen box
+                if ESP.PlayerKOFrozenBoxes[player] then
+                    local frozen = ESP.PlayerKOFrozenBoxes[player]
+                    return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
+                end
                 return
             end
             
@@ -299,23 +313,20 @@ local function GetBoxCorners(char, player)
             local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
             local hw, hh = w / 2, h / 2
             
-            return Vector2.new(cx - hw, cy - hh),
-                   Vector2.new(cx + hw, cy - hh),
-                   Vector2.new(cx + hw, cy + hh),
-                   Vector2.new(cx - hw, cy + hh),
-                   w,
-                   h
+            tl = Vector2.new(cx - hw, cy - hh)
+            tr = Vector2.new(cx + hw, cy - hh)
+            br = Vector2.new(cx + hw, cy + hh)
+            bl = Vector2.new(cx - hw, cy + hh)
+            width, height = w, h
         end
-        
-        return Vector2.new(x, y),
-               Vector2.new(x + width, y),
-               Vector2.new(x + width, y + height),
-               Vector2.new(x, y + height),
-               width,
-               height
     else
         local min3D, max3D = Get3DBounds(char)
         if not min3D or not max3D then
+            -- If no valid box can be calculated, check for frozen box
+            if ESP.PlayerKOFrozenBoxes[player] then
+                local frozen = ESP.PlayerKOFrozenBoxes[player]
+                return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
+            end
             return
         end
 
@@ -339,6 +350,11 @@ local function GetBoxCorners(char, player)
             end
         end
         if minX == math.huge then
+            -- If no valid box can be calculated, check for frozen box
+            if ESP.PlayerKOFrozenBoxes[player] then
+                local frozen = ESP.PlayerKOFrozenBoxes[player]
+                return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
+            end
             return
         end
 
@@ -346,13 +362,30 @@ local function GetBoxCorners(char, player)
         local cx, cy = (minX + maxX) / 2, (minY + maxY) / 2
         local hw, hh = w / 2, h / 2
 
-        return Vector2.new(cx - hw, cy - hh),
-               Vector2.new(cx + hw, cy - hh),
-               Vector2.new(cx + hw, cy + hh),
-               Vector2.new(cx - hw, cy + hh),
-               w,
-               h
+        tl = Vector2.new(cx - hw, cy - hh)
+        tr = Vector2.new(cx + hw, cy - hh)
+        br = Vector2.new(cx + hw, cy + hh)
+        bl = Vector2.new(cx - hw, cy + hh)
+        width, height = w, h
     end
+    
+    -- Store the last valid box calculation
+    ESP.PlayerLastValidBoxes[player] = {
+        tl = tl,
+        tr = tr,
+        br = br,
+        bl = bl,
+        width = width,
+        height = height
+    }
+    
+    -- Check if player is K.O.'d and has a frozen box
+    if ESP.PlayerKOFrozenBoxes[player] then
+        local frozen = ESP.PlayerKOFrozenBoxes[player]
+        return frozen.tl, frozen.tr, frozen.br, frozen.bl, frozen.width, frozen.height
+    end
+    
+    return tl, tr, br, bl, width, height
 end
 
 local function CreateESP(player)
@@ -518,6 +551,7 @@ local function RemoveESP(player)
     ESP.HealthStates[player] = nil
     ESP.HealthChanges[player] = nil
     ESP.PlayerKOFrozenBoxes[player] = nil
+    ESP.PlayerLastValidBoxes[player] = nil
 end
 
 local function CleanupAllESP()
@@ -532,6 +566,7 @@ local function CleanupAllESP()
     ESP.PlayerHealthConnections = {}
     ESP.PlayerKOConnections = {}
     ESP.PlayerKOFrozenBoxes = {}
+    ESP.PlayerLastValidBoxes = {}
 end
 
 local function IsSameTeam(player)
@@ -633,8 +668,12 @@ local function SetupKOTracking(player, character)
     
     ESP.PlayerKOConnections[player] = nil
     
-    local bodyEffects = character:FindFirstChild("BodyEffects")
-    if not bodyEffects then
+    -- Try to find the K.O. value with pcall to handle missing paths
+    local success, bodyEffects = pcall(function()
+        return character:FindFirstChild("BodyEffects")
+    end)
+    
+    if not success or not bodyEffects then
         return
     end
     
@@ -645,19 +684,9 @@ local function SetupKOTracking(player, character)
     
     local function onKOChanged()
         if koValue.Value == true then
-            -- Player is K.O.'d, freeze current box size
-            if character:FindFirstChild("HumanoidRootPart") then
-                local tl, tr, br, bl, width, height = GetBoxCorners(character, player)
-                if tl and tr and br and bl then
-                    ESP.PlayerKOFrozenBoxes[player] = {
-                        tl = tl,
-                        tr = tr,
-                        br = br,
-                        bl = bl,
-                        width = width,
-                        height = height
-                    }
-                end
+            -- Player is K.O.'d, freeze current box size if we have a valid last box
+            if ESP.PlayerLastValidBoxes[player] then
+                ESP.PlayerKOFrozenBoxes[player] = ESP.PlayerLastValidBoxes[player]
             end
         else
             -- Player is no longer K.O.'d, unfreeze box size
@@ -752,8 +781,11 @@ local function HandlePlayerAdded(player)
             ESP.HealthStates[player] = humanoid.Health / humanoid.MaxHealth
         end
         
-        -- Setup K.O. tracking
-        SetupKOTracking(player, character)
+        -- Setup K.O. tracking (will be ignored if K.O. path doesn't exist)
+        task.spawn(function()
+            task.wait(0.5) -- Wait a bit for character to fully load
+            SetupKOTracking(player, character)
+        end)
     end
 
     local function characterRemoving()
@@ -773,6 +805,7 @@ local function HandlePlayerAdded(player)
         end
         
         ESP.PlayerKOFrozenBoxes[player] = nil
+        ESP.PlayerLastValidBoxes[player] = nil
         
         local guis = ESP.GUIs[player]
         if guis then
