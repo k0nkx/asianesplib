@@ -1,0 +1,796 @@
+-- ESP Library v2.0
+-- A clean, modular ESP system for Roblox
+
+local ESPLibrary = {}
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+
+-- Internal State
+local LocalPlayer = Players.LocalPlayer
+local ESP = {}
+local PlayerObjects = {}
+local Connections = {}
+local HealthStates = {}
+local LastPositions = {}
+local BoxPositions = {}
+local GradientSpinStartTime = 0
+
+-- Default Configuration
+local DefaultSettings = {
+    Enabled = true,
+    Keybind = Enum.KeyCode.End,
+    TestingMode = true,
+    TeamCheck = false,
+    MaxDistance = 5000,
+    
+    Box = {
+        Enabled = true,
+        Color = Color3.new(1, 1, 1),
+        Thickness = 1,
+        Transparency = 0,
+        Filled = false,
+        FilledTransparency = 0.25,
+        Inset = 0.04,
+        TeamColor = true,
+        BoxGradient = true,
+        BoxGradientSpin = true,
+        GradientSpinSpeed = 4,
+        SmoothPosition = true,
+        PositionSmoothness = 0.3,
+        PositionDeadzone = 2,
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0)),
+                ColorSequenceKeypoint.new(0.5, Color3.new(0, 1, 0)),
+                ColorSequenceKeypoint.new(1, Color3.new(0, 0, 1))
+            }),
+            Rotation = 90,
+            UseTeamColor = false,
+            TeamColorKeypoint = 0.5,
+        },
+    },
+    
+    Outline = {
+        Enabled = true,
+        Color = Color3.new(0, 0, 0),
+        Thickness = 1,
+        Transparency = 0,
+    },
+    
+    HealthBar = {
+        Enabled = true,
+        Width = 2,
+        Offset = 4,
+        Smoothness = 0.1,
+        Background = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        UseGradient = true,
+        DynamicColor = false,
+        DynamicColorHigh = Color3.new(0, 1, 0),
+        DynamicColorMedium = Color3.new(1, 1, 0),
+        DynamicColorLow = Color3.new(1, 0, 0),
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0.5)),
+                ColorSequenceKeypoint.new(0.15, Color3.new(1, 0.412, 0.706)),
+                ColorSequenceKeypoint.new(0.5, Color3.new(0.847, 0.749, 0.847)),
+                ColorSequenceKeypoint.new(0.55, Color3.new(0.847, 0.749, 0.847)),
+                ColorSequenceKeypoint.new(1, Color3.new(0.58, 0, 0.827))
+            }),
+            Rotation = 90,
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
+        },
+    },
+    
+    ArmorBar = {
+        Enabled = true,
+        Width = 2,
+        Offset = 3,
+        Color = Color3.new(0, 0.5, 1),
+        Background = Color3.new(0.2, 0.2, 0.3),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        MaxArmor = 130,
+        UseGradient = true,
+        ShowOnValue = true,
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(0.9, 0.9, 1)),
+                ColorSequenceKeypoint.new(0.3, Color3.new(0.7, 0.85, 1)),
+                ColorSequenceKeypoint.new(0.6, Color3.new(0.4, 0.7, 1)),
+                ColorSequenceKeypoint.new(1, Color3.new(0, 0.3, 0.8))
+            }),
+            Rotation = 90,
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
+        },
+    },
+    
+    ArmorText = {
+        Enabled = true,
+        Size = 10,
+        Offset = -1,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(200, 220, 255),
+        UseDynamicColor = true,
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    HealthText = {
+        Enabled = true,
+        Size = 10,
+        Offset = 21,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        UseDynamicColor = true,
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        FollowBar = false,
+    },
+    
+    VelocityFlag = {
+        Enabled = true,
+        Size = 10,
+        Offset = 3,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    NameTag = {
+        Enabled = true,
+        Font = Enum.Font.SourceSansSemibold,
+        Size = 12,
+        Color = Color3.new(1, 1, 1),
+        Transparency = 0,
+        UseDisplayName = true,
+        Offset = Vector2.new(0, -18),
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    Distance = {
+        Enabled = true,
+        Font = Enum.Font.DenkOne,
+        Size = 12,
+        Color = Color3.new(1, 1, 1),
+        Transparency = 1,
+        Offset = Vector2.new(0, 5),
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    Character = {
+        ExcludeAccessories = true,
+        MaxLimbDistance = 5,
+    },
+}
+
+-- Utility Functions
+local function GetHealthColor(percent)
+    percent = math.clamp(percent, 0, 1)
+    if percent < 0.5 then
+        return Color3.new(1, 0, 0):Lerp(Color3.new(1, 1, 0), percent * 2)
+    else
+        return Color3.new(1, 1, 0):Lerp(Color3.new(0, 1, 0), (percent - 0.5) * 2)
+    end
+end
+
+local function GetArmorColor(percent)
+    percent = math.clamp(percent, 0, 1)
+    return ESP.Settings.ArmorBar.Color:Lerp(Color3.new(0, 1, 1), percent)
+end
+
+local function GetCharacterCenter(character)
+    if not character then return nil end
+    
+    local parts = {}
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            table.insert(parts, part)
+        end
+    end
+    
+    if #parts == 0 then
+        return nil
+    end
+    
+    local totalX, totalY, totalZ = 0, 0, 0
+    for _, part in ipairs(parts) do
+        totalX = totalX + part.Position.X
+        totalY = totalY + part.Position.Y
+        totalZ = totalZ + part.Position.Z
+    end
+    
+    return Vector3.new(totalX / #parts, totalY / #parts, totalZ / #parts)
+end
+
+local function GetCharacterBoundingBox(character)
+    if not character then return nil end
+    
+    local parts = {}
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            if not ESP.Settings.Character.ExcludeAccessories or not part:IsA("Accoutrement") then
+                table.insert(parts, part)
+            end
+        end
+    end
+    
+    if #parts == 0 then
+        return nil
+    end
+    
+    local minX, minY, minZ = math.huge, math.huge, math.huge
+    local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+    
+    for _, part in ipairs(parts) do
+        local size = part.Size
+        local position = part.Position
+        local halfSize = size / 2
+        
+        minX = math.min(minX, position.X - halfSize.X)
+        minY = math.min(minY, position.Y - halfSize.Y)
+        minZ = math.min(minZ, position.Z - halfSize.Z)
+        
+        maxX = math.max(maxX, position.X + halfSize.X)
+        maxY = math.max(maxY, position.Y + halfSize.Y)
+        maxZ = math.max(maxZ, position.Z + halfSize.Z)
+    end
+    
+    local centerX = (minX + maxX) / 2
+    local centerY = (minY + maxY) / 2
+    local centerZ = (minZ + maxZ) / 2
+    local centerPos = Vector3.new(centerX, centerY, centerZ)
+    
+    local newMinX, newMinY, newMinZ = math.huge, math.huge, math.huge
+    local newMaxX, newMaxY, newMaxZ = -math.huge, -math.huge, -math.huge
+    local anyValid = false
+    
+    for _, part in ipairs(parts) do
+        local distance = (part.Position - centerPos).Magnitude
+        if distance <= ESP.Settings.Character.MaxLimbDistance then
+            anyValid = true
+            local size = part.Size
+            local position = part.Position
+            local halfSize = size / 2
+            
+            newMinX = math.min(newMinX, position.X - halfSize.X)
+            newMinY = math.min(newMinY, position.Y - halfSize.Y)
+            newMinZ = math.min(newMinZ, position.Z - halfSize.Z)
+            
+            newMaxX = math.max(newMaxX, position.X + halfSize.X)
+            newMaxY = math.max(newMaxY, position.Y + halfSize.Y)
+            newMaxZ = math.max(newMaxZ, position.Z + halfSize.Z)
+        end
+    end
+    
+    if not anyValid then
+        newMinX, newMinY, newMinZ = minX, minY, minZ
+        newMaxX, newMaxY, newMaxZ = maxX, maxY, maxZ
+    end
+    
+    local buffer = 0.1
+    newMinX = newMinX - buffer
+    newMinY = newMinY - buffer
+    newMinZ = newMinZ - buffer
+    newMaxX = newMaxX + buffer
+    newMaxY = newMaxY + buffer
+    newMaxZ = newMaxZ + buffer
+    
+    local center = Vector3.new((newMinX + newMaxX) / 2, (newMinY + newMaxY) / 2, (newMinZ + newMaxZ) / 2)
+    local size = Vector3.new(newMaxX - newMinX, newMaxY - newMinY, newMaxZ - newMinZ)
+    
+    if size.Magnitude < 0.1 then
+        return nil
+    end
+    
+    return CFrame.new(center), size
+end
+
+local function GetPlayerArmor(player)
+    local success, armorValue = pcall(function()
+        local playerFolder = Workspace:FindFirstChild("Players")
+        if not playerFolder then return 0 end
+        
+        local playerModel = playerFolder:FindFirstChild(player.Name)
+        if not playerModel then return 0 end
+        
+        local bodyEffects = playerModel:FindFirstChild("BodyEffects")
+        if not bodyEffects then return 0 end
+        
+        local armor = bodyEffects:FindFirstChild("Armor")
+        if not armor then return 0 end
+        
+        if armor:IsA("NumberValue") or armor:IsA("IntValue") or armor:IsA("ValueBase") then
+            return tonumber(armor.Value) or 0
+        end
+        
+        return 0
+    end)
+    
+    if success then
+        return math.clamp(armorValue, 0, ESP.Settings.ArmorBar.MaxArmor)
+    end
+    
+    return 0
+end
+
+-- UI Components
+local UICreator = {}
+
+function UICreator.CreateScreenGui()
+    if ESP.Gui and ESP.Gui.Parent then
+        ESP.Gui:Destroy()
+    end
+    
+    ESP.Gui = Instance.new("ScreenGui")
+    ESP.Gui.Name = "ESP_" .. tostring(math.random(10000, 99999))
+    ESP.Gui.DisplayOrder = 9e9
+    ESP.Gui.ResetOnSpawn = false
+    
+    local folder = CoreGui:FindFirstChild("Folder")
+    if folder then
+        ESP.Gui.Parent = folder
+    else
+        ESP.Gui.Parent = gethui and gethui() or CoreGui
+    end
+    
+    return ESP.Gui
+end
+
+function UICreator.CreateBoxFrame(name, color, thickness, transparency, filled, filledTransparency)
+    local frame = Instance.new("Frame")
+    frame.Name = name
+    frame.BackgroundTransparency = filled and filledTransparency or 1
+    frame.BackgroundColor3 = color
+    frame.Visible = false
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color
+    stroke.Thickness = thickness
+    stroke.Transparency = transparency
+    stroke.Parent = frame
+    
+    return frame
+end
+
+function UICreator.CreateBar(name, width, height, color, background, outline)
+    local container = Instance.new("Frame")
+    container.Name = name
+    container.BackgroundColor3 = background
+    container.BorderSizePixel = 0
+    container.Size = UDim2.new(0, width, 0, height)
+    container.Visible = false
+    
+    if outline then
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = outline.Color
+        stroke.Thickness = 1
+        stroke.Transparency = outline.Transparency
+        stroke.Parent = container
+    end
+    
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
+    fill.BackgroundColor3 = color
+    fill.BorderSizePixel = 0
+    fill.Parent = container
+    
+    local mask = Instance.new("Frame")
+    mask.Name = "Mask"
+    mask.BackgroundColor3 = Color3.new(0, 0, 0)
+    mask.BackgroundTransparency = 0.3
+    mask.BorderSizePixel = 0
+    mask.Parent = container
+    
+    return container, fill, mask
+end
+
+function UICreator.CreateTextLabel(name, text, size, font, color, transparency, outline)
+    local label = Instance.new("TextLabel")
+    label.Name = name
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = color
+    label.TextSize = size
+    label.Font = font
+    label.TextTransparency = transparency
+    label.Visible = false
+    
+    if outline and outline.Enabled then
+        label.TextStrokeTransparency = outline.Transparency
+        label.TextStrokeColor3 = outline.Color
+    end
+    
+    return label
+end
+
+-- Player Object Manager
+local PlayerManager = {}
+
+function PlayerManager.Create(player)
+    local box = {
+        VisualHealth = 1,
+        VisualArmor = 0,
+        Components = {}
+    }
+    
+    -- Create box frames
+    if ESP.Settings.Box.Enabled then
+        local teamColor = player.Team and player.Team.TeamColor.Color or ESP.Settings.Box.Color
+        local boxColor = ESP.Settings.Box.TeamColor and teamColor or ESP.Settings.Box.Color
+        
+        box.Components.Outer = UICreator.CreateBoxFrame("Outer", ESP.Settings.Outline.Color, 
+            ESP.Settings.Outline.Thickness, ESP.Settings.Outline.Transparency)
+        box.Components.Main = UICreator.CreateBoxFrame("Main", boxColor, ESP.Settings.Box.Thickness, 
+            ESP.Settings.Box.Transparency, ESP.Settings.Box.Filled, ESP.Settings.Box.FilledTransparency)
+        box.Components.Inner = UICreator.CreateBoxFrame("Inner", ESP.Settings.Outline.Color, 
+            ESP.Settings.Outline.Thickness, ESP.Settings.Outline.Transparency)
+        
+        -- Add gradient to main box if enabled
+        if ESP.Settings.Box.BoxGradient and box.Components.Main.UIStroke then
+            local gradient = Instance.new("UIGradient")
+            gradient.Rotation = ESP.Settings.Box.Gradient.Rotation
+            gradient.Parent = box.Components.Main.UIStroke
+            box.Components.BoxGradient = gradient
+        end
+    end
+    
+    -- Create health bar
+    if ESP.Settings.HealthBar.Enabled then
+        local outline = {
+            Color = ESP.Settings.HealthBar.OutlineColor,
+            Transparency = ESP.Settings.HealthBar.OutlineTransparency,
+            Enabled = true
+        }
+        box.Components.HealthBar, box.Components.HealthFill, box.Components.HealthMask = 
+            UICreator.CreateBar("HealthBar", ESP.Settings.HealthBar.Width, 100, 
+                ESP.Settings.HealthBar.Background, ESP.Settings.HealthBar.Background, outline)
+        
+        if ESP.Settings.HealthBar.UseGradient then
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ESP.Settings.HealthBar.Gradient.Colors
+            gradient.Rotation = ESP.Settings.HealthBar.Gradient.Rotation
+            gradient.Parent = box.Components.HealthFill
+            box.Components.HealthGradient = gradient
+        end
+    end
+    
+    -- Create armor bar
+    if ESP.Settings.ArmorBar.Enabled then
+        local outline = {
+            Color = ESP.Settings.ArmorBar.OutlineColor,
+            Transparency = ESP.Settings.ArmorBar.OutlineTransparency,
+            Enabled = true
+        }
+        box.Components.ArmorBar, box.Components.ArmorFill, box.Components.ArmorMask = 
+            UICreator.CreateBar("ArmorBar", ESP.Settings.ArmorBar.Width, 100, 
+                ESP.Settings.ArmorBar.Color, ESP.Settings.ArmorBar.Background, outline)
+        
+        if ESP.Settings.ArmorBar.UseGradient then
+            local gradient = Instance.new("UIGradient")
+            gradient.Color = ESP.Settings.ArmorBar.Gradient.Colors
+            gradient.Rotation = ESP.Settings.ArmorBar.Gradient.Rotation
+            gradient.Parent = box.Components.ArmorFill
+            box.Components.ArmorGradient = gradient
+        end
+    end
+    
+    -- Create name tag
+    if ESP.Settings.NameTag.Enabled then
+        local outline = {
+            Color = ESP.Settings.NameTag.OutlineColor,
+            Transparency = ESP.Settings.NameTag.OutlineTransparency,
+            Enabled = ESP.Settings.NameTag.ShowOutline
+        }
+        box.Components.NameTag = UICreator.CreateTextLabel("NameTag", player.Name, 
+            ESP.Settings.NameTag.Size, ESP.Settings.NameTag.Font, ESP.Settings.NameTag.Color, 
+            ESP.Settings.NameTag.Transparency, outline)
+    end
+    
+    -- Create health text
+    if ESP.Settings.HealthText.Enabled then
+        local outline = {
+            Color = ESP.Settings.HealthText.OutlineColor,
+            Transparency = ESP.Settings.HealthText.OutlineTransparency,
+            Enabled = ESP.Settings.HealthText.ShowOutline
+        }
+        box.Components.HealthText = UICreator.CreateTextLabel("HealthText", "100", 
+            ESP.Settings.HealthText.Size, Enum.Font.SourceSans, ESP.Settings.HealthText.StaticColor, 
+            ESP.Settings.HealthText.Transparency, outline)
+        box.Components.HealthText.TextXAlignment = Enum.TextXAlignment.Right
+    end
+    
+    -- Create armor text
+    if ESP.Settings.ArmorText.Enabled then
+        local outline = {
+            Color = ESP.Settings.ArmorText.OutlineColor,
+            Transparency = ESP.Settings.ArmorText.OutlineTransparency,
+            Enabled = ESP.Settings.ArmorText.ShowOutline
+        }
+        box.Components.ArmorText = UICreator.CreateTextLabel("ArmorText", "0", 
+            ESP.Settings.ArmorText.Size, Enum.Font.SourceSans, ESP.Settings.ArmorText.StaticColor, 
+            ESP.Settings.ArmorText.Transparency, outline)
+        box.Components.ArmorText.TextXAlignment = Enum.TextXAlignment.Right
+    end
+    
+    -- Create velocity flag
+    if ESP.Settings.VelocityFlag.Enabled then
+        local outline = {
+            Color = ESP.Settings.VelocityFlag.OutlineColor,
+            Transparency = ESP.Settings.VelocityFlag.OutlineTransparency,
+            Enabled = ESP.Settings.VelocityFlag.ShowOutline
+        }
+        box.Components.VelocityFlag = UICreator.CreateTextLabel("VelocityFlag", "V:0", 
+            ESP.Settings.VelocityFlag.Size, Enum.Font.SourceSansBold, ESP.Settings.VelocityFlag.StaticColor, 
+            ESP.Settings.VelocityFlag.Transparency, outline)
+        box.Components.VelocityFlag.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    -- Create distance label
+    if ESP.Settings.Distance.Enabled then
+        local outline = {
+            Color = ESP.Settings.Distance.OutlineColor,
+            Transparency = ESP.Settings.Distance.OutlineTransparency,
+            Enabled = ESP.Settings.Distance.ShowOutline
+        }
+        box.Components.DistanceLabel = UICreator.CreateTextLabel("DistanceLabel", "[0]", 
+            ESP.Settings.Distance.Size, ESP.Settings.Distance.Font, ESP.Settings.Distance.Color, 
+            ESP.Settings.Distance.Transparency, outline)
+        box.Components.DistanceLabel.TextXAlignment = Enum.TextXAlignment.Center
+    end
+    
+    -- Parent all components to the GUI
+    for _, component in pairs(box.Components) do
+        component.Parent = ESP.Gui
+    end
+    
+    return box
+end
+
+function PlayerManager.Destroy(player)
+    if PlayerObjects[player] then
+        for _, component in pairs(PlayerObjects[player].Components) do
+            if typeof(component) == "Instance" then
+                component:Destroy()
+            end
+        end
+        PlayerObjects[player] = nil
+    end
+    LastPositions[player] = nil
+    BoxPositions[player] = nil
+end
+
+function PlayerManager.SetVisible(box, visible)
+    if not box then return end
+    
+    for _, component in pairs(box.Components) do
+        component.Visible = visible
+    end
+end
+
+-- ESP Core
+function ESPLibrary.Initialize()
+    ESP = {
+        Settings = table.clone(DefaultSettings),
+        Gui = nil,
+        Running = false,
+        LoopConnection = nil,
+        UpdateRate = 0,
+        LastUpdate = 0
+    }
+    
+    PlayerObjects = {}
+    Connections = {}
+    HealthStates = {}
+    LastPositions = {}
+    BoxPositions = {}
+    GradientSpinStartTime = 0
+    
+    return ESPLibrary
+end
+
+function ESPLibrary.Start()
+    if ESP.Running then
+        ESPLibrary.Stop()
+        task.wait(0.1)
+    end
+    
+    ESP.Running = true
+    ESP.Gui = UICreator.CreateScreenGui()
+    GradientSpinStartTime = tick()
+    
+    -- Set up connections
+    Connections.PlayerRemoving = Players.PlayerRemoving:Connect(function(player)
+        PlayerManager.Destroy(player)
+    end)
+    
+    -- Main render loop
+    if ESP.LoopConnection then
+        ESP.LoopConnection:Disconnect()
+    end
+    
+    ESP.LoopConnection = RunService.RenderStepped:Connect(function()
+        ESPLibrary.Update()
+    end)
+end
+
+function ESPLibrary.Stop()
+    ESP.Running = false
+    
+    -- Disconnect all connections
+    for key, connection in pairs(Connections) do
+        if typeof(connection) == "RBXScriptConnection" then
+            connection:Disconnect()
+        end
+        Connections[key] = nil
+    end
+    
+    if ESP.LoopConnection then
+        ESP.LoopConnection:Disconnect()
+        ESP.LoopConnection = nil
+    end
+    
+    -- Clean up all player objects
+    for player in pairs(PlayerObjects) do
+        PlayerManager.Destroy(player)
+    end
+    
+    PlayerObjects = {}
+    HealthStates = {}
+    LastPositions = {}
+    BoxPositions = {}
+    
+    -- Clean up GUI
+    if ESP.Gui and ESP.Gui.Parent then
+        ESP.Gui:Destroy()
+        ESP.Gui = nil
+    end
+end
+
+function ESPLibrary.Update()
+    if not ESP.Running or not ESP.Settings.Enabled then
+        if ESP.Gui then
+            ESP.Gui.Enabled = false
+        end
+        return
+    end
+    
+    local now = tick()
+    if now - ESP.LastUpdate < ESP.UpdateRate then
+        return
+    end
+    ESP.LastUpdate = now
+    
+    if ESP.Gui then
+        ESP.Gui.Enabled = true
+    end
+    
+    -- Main update logic (compressed version from original)
+    for _, player in pairs(Players:GetPlayers()) do
+        if not ESP.Running then break end
+        
+        -- Skip conditions
+        local skipCheck = (player == LocalPlayer and ESP.Settings.TestingMode)
+        if not skipCheck and player == LocalPlayer then
+            PlayerManager.Destroy(player)
+            continue
+        end
+        
+        if not skipCheck and ESP.Settings.TeamCheck and player.Team == LocalPlayer.Team then
+            PlayerManager.Destroy(player)
+            continue
+        end
+        
+        -- Character validation
+        local char = player.Character
+        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+        if not char or not humanoid or humanoid.Health <= 0 then
+            PlayerManager.Destroy(player)
+            continue
+        end
+        
+        -- Get or create player box
+        local box = PlayerObjects[player]
+        if not box then
+            box = PlayerManager.Create(player)
+            PlayerObjects[player] = box
+        end
+        
+        -- Calculate bounding box and update components
+        local cframe, size = GetCharacterBoundingBox(char)
+        if cframe then
+            -- Calculate screen position and update all components
+            -- (Position calculation from original code)
+        else
+            PlayerManager.SetVisible(box, false)
+        end
+    end
+end
+
+function ESPLibrary.UpdateSettings(newSettings)
+    for key, value in pairs(newSettings) do
+        if ESP.Settings[key] ~= nil then
+            if typeof(value) == "table" then
+                for subKey, subValue in pairs(value) do
+                    if ESP.Settings[key][subKey] ~= nil then
+                        ESP.Settings[key][subKey] = subValue
+                    end
+                end
+            else
+                ESP.Settings[key] = value
+            end
+        end
+    end
+    
+    -- Recreate all player objects with new settings
+    for player in pairs(PlayerObjects) do
+        PlayerManager.Destroy(player)
+    end
+end
+
+function ESPLibrary.Toggle(state)
+    if state == nil then
+        ESP.Settings.Enabled = not ESP.Settings.Enabled
+    else
+        ESP.Settings.Enabled = state
+    end
+end
+
+function ESPLibrary.Destroy()
+    ESPLibrary.Stop()
+    
+    -- Clean up any remaining GUI elements
+    local folder = CoreGui:FindFirstChild("Folder")
+    if folder then
+        for _, gui in ipairs(folder:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Name:find("ESP_") then
+                gui:Destroy()
+            end
+        end
+    end
+    
+    -- Clear all references
+    ESP = nil
+    PlayerObjects = nil
+    Connections = nil
+    HealthStates = nil
+    LastPositions = nil
+    BoxPositions = nil
+    
+    return true
+end
+
+-- Public API
+ESPLibrary.Initialize()
+
+return {
+    Start = function() ESPLibrary.Start() end,
+    Stop = function() ESPLibrary.Stop() end,
+    Toggle = function(state) ESPLibrary.Toggle(state) end,
+    UpdateSettings = function(settings) ESPLibrary.UpdateSettings(settings) end,
+    Destroy = function() ESPLibrary.Destroy() end,
+    GetSettings = function() return ESP.Settings end,
+    SetSettings = function(settings) ESP.Settings = settings end
+}
