@@ -1,190 +1,209 @@
-local ESPLibrary = {}
+do
+    if ESP and ESP.Destroy then
+        ESP:Destroy()
+    end
+    ESP = nil
+    
+    local CoreGui = game:GetService("CoreGui")
+    local folder = CoreGui:FindFirstChild("Folder")
+    if folder then
+        for _, gui in ipairs(folder:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Name:find("ESP_") then
+                gui:Destroy()
+            end
+        end
+    end
+end
 
 local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
 local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
+if _G.ESPInstance and _G.ESPInstance.Destroy then
+    _G.ESPInstance:Destroy()
+end
 
-local ESP = {
-    Players = {},
-    Connections = {},
-    HealthStates = {},
-    Gui = nil,
-    Running = false,
-    LoopConnection = nil,
-    UpdateRate = 0,
-    LastUpdate = 0,
-    LastPositions = {},
-    GradientSpinStartTime = 0,
-    BoxPositions = {},
+ESP = {}
+ESP.__index = ESP
+
+ESP.Players = {}
+ESP.Connections = {}
+ESP.HealthStates = {}
+ESP.Gui = nil
+ESP.Running = false
+ESP.LoopConnection = nil
+ESP.UpdateRate = 0
+ESP.LastUpdate = 0
+ESP.LastPositions = {}
+ESP.GradientSpinStartTime = 0
+ESP.BoxPositions = {}
+
+ESP.Settings = {
+    Enabled = true,
+    Keybind = Enum.KeyCode.End,
+    TestingMode = false,
+    TeamCheck = false,
+    MaxDistance = 5000,
     
-    Settings = {
+    Box = {
         Enabled = true,
-        Keybind = Enum.KeyCode.End,
-        TestingMode = true,
-        TeamCheck = false,
-        MaxDistance = 5000,
-        
-        Box = {
-            Enabled = true,
-            Color = Color3.new(1, 1, 1),
-            Thickness = 1,
-            Transparency = 0,
-            Filled = false,
-            FilledTransparency = 0.25,
-            Inset = 0.04,
-            TeamColor = true,
-            BoxGradient = true,
-            BoxGradientSpin = true,
-            GradientSpinSpeed = 4,
-            SmoothPosition = true,
-            PositionSmoothness = 0.3,
-            PositionDeadzone = 2,
-            Gradient = {
-                Colors = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0)),
-                    ColorSequenceKeypoint.new(0.5, Color3.new(0, 1, 0)),
-                    ColorSequenceKeypoint.new(1, Color3.new(0, 0, 1))
-                }),
-                Rotation = 90,
-                UseTeamColor = false,
-                TeamColorKeypoint = 0.5,
-            },
+        Color = Color3.new(1, 1, 1),
+        Thickness = 1,
+        Transparency = 0,
+        Filled = false,
+        FilledTransparency = 0.25,
+        Inset = 0.04,
+        TeamColor = false,
+        BoxGradient = true,
+        BoxGradientSpin = true,
+        GradientSpinSpeed = 4.5,
+        SmoothPosition = true,
+        PositionSmoothness = 0.3,
+        PositionDeadzone = 2,
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 0.714, 0.757)),
+                ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+                ColorSequenceKeypoint.new(1, Color3.new(0.75, 0.84, 1))
+            }),
+            Rotation = 90,
+            UseTeamColor = false,
+            TeamColorKeypoint = 0.5,
         },
-        
-        Outline = {
-            Enabled = true,
-            Color = Color3.new(0, 0, 0),
-            Thickness = 1,
-            Transparency = 0,
+    },
+    
+    Outline = {
+        Enabled = true,
+        Color = Color3.new(0, 0, 0),
+        Thickness = 1,
+        Transparency = 0,
+    },
+    
+    HealthBar = {
+        Enabled = true,
+        Width = 2,
+        Offset = 4,
+        Smoothness = 0.1,
+        Background = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        UseGradient = true,
+        DynamicColor = false,
+        DynamicColorHigh = Color3.new(0, 1, 0),
+        DynamicColorMedium = Color3.new(1, 1, 0),
+        DynamicColorLow = Color3.new(1, 0, 0),
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0.5)),
+                ColorSequenceKeypoint.new(0.15, Color3.new(1, 0.412, 0.706)),
+                ColorSequenceKeypoint.new(0.5, Color3.new(0.847, 0.749, 0.847)),
+                ColorSequenceKeypoint.new(0.55, Color3.new(0.847, 0.749, 0.847)),
+                ColorSequenceKeypoint.new(1, Color3.new(0.58, 0, 0.827))
+            }),
+            Rotation = 90,
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
         },
-        
-        HealthBar = {
-            Enabled = true,
-            Width = 2,
-            Offset = 4,
-            Smoothness = 0.1,
-            Background = Color3.new(1, 1, 1),
-            BackgroundTransparency = 0,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-            UseGradient = true,
-            DynamicColor = false,
-            DynamicColorHigh = Color3.new(0, 1, 0),
-            DynamicColorMedium = Color3.new(1, 1, 0),
-            DynamicColorLow = Color3.new(1, 0, 0),
-            Gradient = {
-                Colors = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0.5)),
-                    ColorSequenceKeypoint.new(0.15, Color3.new(1, 0.412, 0.706)),
-                    ColorSequenceKeypoint.new(0.5, Color3.new(0.847, 0.749, 0.847)),
-                    ColorSequenceKeypoint.new(0.55, Color3.new(0.847, 0.749, 0.847)),
-                    ColorSequenceKeypoint.new(1, Color3.new(0.58, 0, 0.827))
-                }),
-                Rotation = 90,
-                LerpAnimation = true,
-                LerpSpeed = 0.028,
-            },
+    },
+    
+    ArmorBar = {
+        Enabled = true,
+        Width = 2,
+        Offset = 3,
+        Color = Color3.new(0, 0.5, 1),
+        Background = Color3.new(0.2, 0.2, 0.3),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        MaxArmor = 130,
+        UseGradient = true,
+        ShowOnValue = true,
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(0.9, 0.9, 1)),
+                ColorSequenceKeypoint.new(0.3, Color3.new(0.7, 0.85, 1)),
+                ColorSequenceKeypoint.new(0.6, Color3.new(0.4, 0.7, 1)),
+                ColorSequenceKeypoint.new(1, Color3.new(0, 0.3, 0.8))
+            }),
+            Rotation = 90,
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
         },
-        
-        ArmorBar = {
-            Enabled = true,
-            Width = 2,
-            Offset = 3,
-            Color = Color3.new(0, 0.5, 1),
-            Background = Color3.new(0.2, 0.2, 0.3),
-            BackgroundTransparency = 0,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-            MaxArmor = 130,
-            UseGradient = true,
-            ShowOnValue = true,
-            Gradient = {
-                Colors = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0, Color3.new(0.9, 0.9, 1)),
-                    ColorSequenceKeypoint.new(0.3, Color3.new(0.7, 0.85, 1)),
-                    ColorSequenceKeypoint.new(0.6, Color3.new(0.4, 0.7, 1)),
-                    ColorSequenceKeypoint.new(1, Color3.new(0, 0.3, 0.8))
-                }),
-                Rotation = 90,
-                LerpAnimation = true,
-                LerpSpeed = 0.028,
-            },
-        },
-        
-        ArmorText = {
-            Enabled = true,
-            Size = 10,
-            Offset = -1,
-            Color = Color3.new(1, 1, 1),
-            StaticColor = Color3.fromRGB(200, 220, 255),
-            UseDynamicColor = true,
-            Transparency = 0,
-            ShowOutline = true,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-        },
-        
-        HealthText = {
-            Enabled = true,
-            Size = 10,
-            Offset = 21,
-            Color = Color3.new(1, 1, 1),
-            StaticColor = Color3.fromRGB(255, 255, 255),
-            UseDynamicColor = true,
-            Transparency = 0,
-            ShowOutline = true,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-            FollowBar = false,
-        },
-        
-        VelocityFlag = {
-            Enabled = true,
-            Size = 10,
-            Offset = 3,
-            Color = Color3.new(1, 1, 1),
-            StaticColor = Color3.fromRGB(255, 255, 255),
-            Transparency = 0,
-            ShowOutline = true,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-        },
-        
-        NameTag = {
-            Enabled = true,
-            Font = Enum.Font.SourceSansSemibold,
-            Size = 12,
-            Color = Color3.new(1, 1, 1),
-            Transparency = 0,
-            UseDisplayName = true,
-            Offset = Vector2.new(0, -18),
-            ShowOutline = true,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-        },
-        
-        Distance = {
-            Enabled = true,
-            Font = Enum.Font.DenkOne,
-            Size = 12,
-            Color = Color3.new(1, 1, 1),
-            Transparency = 1,
-            Offset = Vector2.new(0, 5),
-            ShowOutline = true,
-            OutlineColor = Color3.new(0, 0, 0),
-            OutlineTransparency = 0,
-        },
-        
-        Character = {
-            ExcludeAccessories = true,
-            MaxLimbDistance = 5,
-        },
-    }
+    },
+    
+    ArmorText = {
+        Enabled = true,
+        Size = 10,
+        Offset = -1,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(200, 220, 255),
+        UseDynamicColor = true,
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    HealthText = {
+        Enabled = true,
+        Size = 10,
+        Offset = 21,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        UseDynamicColor = true,
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        FollowBar = false,
+    },
+    
+    VelocityFlag = {
+        Enabled = true,
+        Size = 10,
+        Offset = 3,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    NameTag = {
+        Enabled = true,
+        Font = Enum.Font.SourceSansSemibold,
+        Size = 12,
+        Color = Color3.new(1, 1, 1),
+        Transparency = 0,
+        UseDisplayName = true,
+        Offset = Vector2.new(0, -18),
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    Distance = {
+        Enabled = true,
+        Font = Enum.Font.DenkOne,
+        Size = 12,
+        Color = Color3.new(1, 1, 1),
+        Transparency = 1,
+        Offset = Vector2.new(0, 5),
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    Character = {
+        ExcludeAccessories = true,
+        MaxLimbDistance = 5,
+    },
 }
 
 function ESP:GetHealthColor(percent)
@@ -1303,23 +1322,14 @@ function ESP:Destroy()
     setmetatable(self, nil)
 end
 
--- Library API
-ESPLibrary.new = function()
-    local instance = setmetatable({}, {__index = ESP})
-    instance:Start()
-    return instance
-end
+_G.ESPInstance = ESP
+ESP:Start()
 
-ESPLibrary.getDefaultSettings = function()
-    return ESP.Settings
-end
-
-ESPLibrary.getHealthColor = function(percent)
-    return ESP:GetHealthColor(percent)
-end
-
-ESPLibrary.getArmorColor = function(percent)
-    return ESP:GetArmorColor(percent)
-end
-
-return ESPLibrary
+return {
+    Toggle = function(state) ESP:Toggle(state) end,
+    UpdateSettings = function(settings) ESP:UpdateSettings(settings) end,
+    Stop = function() ESP:Stop() end,
+    Start = function() ESP:Start() end,
+    Destroy = function() ESP:Destroy() end,
+    Settings = ESP.Settings
+}
