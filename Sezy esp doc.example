@@ -1,0 +1,194 @@
+-- Load the ESP library from GitHub
+local ESP = loadstring(game:HttpGet("https://raw.githubusercontent.com/k0nkx/asianesplib/refs/heads/main/Sezy%20rewrite%20v1%20test"))()
+
+-- Set all visuals to white by default
+ESP.UpdateSettings({
+    Enabled = true,
+    Keybind = Enum.KeyCode.End,
+    TestingMode = false,
+    TeamCheck = false,
+    MaxDistance = 5000,
+    
+    Box = {
+        Enabled = true,
+        Color = Color3.new(1, 1, 1),
+        Thickness = 1,
+        Transparency = 0,
+        Filled = false,
+        FilledTransparency = 0.25,
+        Inset = 0.04,
+        TeamColor = false,
+        BoxGradient = true,
+        BoxGradientSpin = true,
+        GradientSpinSpeed = 4.5,
+        SmoothPosition = true,
+        PositionSmoothness = 0.3,
+        PositionDeadzone = 2,
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+                ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
+            }),
+            Rotation = 90,
+            UseTeamColor = false,
+            TeamColorKeypoint = 0.5,
+        },
+    },
+    
+    Outline = {
+        Enabled = true,
+        Color = Color3.new(0, 0, 0),
+        Thickness = 1,
+        Transparency = 0,
+    },
+    
+    HealthBar = {
+        Enabled = true,
+        Width = 2,
+        Offset = 4,
+        Smoothness = 0.1,
+        Background = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        UseGradient = true,
+        DynamicColor = false,
+        DynamicColorHigh = Color3.new(0, 1, 0),
+        DynamicColorMedium = Color3.new(1, 1, 0),
+        DynamicColorLow = Color3.new(1, 0, 0),
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+                ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
+            }),
+            Rotation = 90,
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
+        },
+    },
+    
+    ArmorBar = {
+        Enabled = true,
+        Width = 2,
+        Offset = 3,
+        Color = Color3.new(1, 1, 1),
+        Background = Color3.new(0.2, 0.2, 0.3),
+        BackgroundTransparency = 0,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        MaxArmor = 130,
+        UseGradient = true,
+        ShowOnValue = true,
+        Gradient = {
+            Colors = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+                ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
+            }),
+            Rotation = 90,
+            LerpAnimation = true,
+            LerpSpeed = 0.028,
+        },
+    },
+    
+    ArmorText = {
+        Enabled = true,
+        Size = 10,
+        Offset = -1,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        UseDynamicColor = true,
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    HealthText = {
+        Enabled = true,
+        Size = 10,
+        Offset = 21,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        UseDynamicColor = true,
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+        FollowBar = false,
+    },
+    
+    VelocityFlag = {
+        Enabled = true,
+        Size = 10,
+        Offset = 3,
+        Color = Color3.new(1, 1, 1),
+        StaticColor = Color3.fromRGB(255, 255, 255),
+        Transparency = 0,
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    NameTag = {
+        Enabled = true,
+        Font = Enum.Font.SourceSansSemibold,
+        Size = 12,
+        Color = Color3.new(1, 1, 1),
+        Transparency = 0,
+        UseDisplayName = true,
+        Offset = Vector2.new(0, -18),
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    Distance = {
+        Enabled = true,
+        Font = Enum.Font.DenkOne,
+        Size = 12,
+        Color = Color3.new(1, 1, 1),
+        Transparency = 1,
+        Offset = Vector2.new(0, 5),
+        ShowOutline = true,
+        OutlineColor = Color3.new(0, 0, 0),
+        OutlineTransparency = 0,
+    },
+    
+    Character = {
+        ExcludeAccessories = true,
+        MaxLimbDistance = 5,
+    },
+})
+
+-- EXAMPLE USAGE COMMANDS (uncomment to use):
+
+-- Toggle ESP on/off (press End key or call this function)
+-- ESP.Toggle() -- Toggles between on and off
+
+-- Toggle ESP to specific state
+-- ESP.Toggle(true)  -- Turns ESP on
+-- ESP.Toggle(false) -- Turns ESP off
+
+-- Stop ESP completely (stops rendering and updates)
+-- ESP.Stop()
+
+-- Start ESP again after stopping
+-- ESP.Start()
+
+-- Update specific settings while ESP is running
+-- ESP.UpdateSettings({
+--     Box = {
+--         Thickness = 2,
+--         Color = Color3.new(1, 0, 0) -- Red boxes
+--     },
+--     MaxDistance = 1000 -- Only show players within 1000 studs
+-- })
+
+-- Destroy ESP completely (clean up everything)
+-- ESP.Destroy()
+
+-- Access current settings (read-only)
+-- print("Box enabled:", ESP.Settings.Box.Enabled)
+-- print("Max distance:", ESP.Settings.MaxDistance)
+
+-- Note: The ESP automatically starts when loaded, so it's already running
